@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 import uvicorn
 
+from apps.router import router
 from apps.app01 import user
 from apps.app02 import geometry
 from apps.app03 import optimize
@@ -17,6 +18,7 @@ register_tortoise(
     config=TORTOISE_ORM_sqlite
 )
 
+app.include_router(router)
 app.include_router(user, prefix="/user", tags=["用户部分", ])
 app.include_router(geometry, prefix="/geometry", tags=["几何建模", ])
 app.include_router(optimize, prefix="/optimize", tags=["设计优化", ])

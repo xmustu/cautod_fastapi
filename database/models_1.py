@@ -14,7 +14,6 @@ class Users(Model):
     class Meta:
         table = "users"
 
-"""
 # 会话模型
 class Conversations(Model):
     conversation_id = fields.CharField(max_length=64, pk=True)
@@ -88,5 +87,3 @@ class OptimizationResults(Model):
     class Meta:
         table = "optimization_results"
         indexes = [("idx_task_id", ["task_id"])]
-
-"""

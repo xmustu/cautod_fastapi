@@ -5,3 +5,7 @@ python-multipart
 aerich
 tortoise-orm
 aiosqlite
+pyjwt
+sqlalchemy
+passlib
+bcrypt
