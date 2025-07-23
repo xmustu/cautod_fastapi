@@ -9,3 +9,4 @@ pyjwt
 sqlalchemy
 passlib
 bcrypt
+sse-starlette

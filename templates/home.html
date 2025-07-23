@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <header class="mb-8">
+            <h1 class="text-2xl font-bold text-gray-800">System Information</h1>
+            <p class="text-gray-600 mt-1">Request details and system alerts</p>
+        </header>
+
+        <!-- Alert Section -->
+        {% if alert %}
+        <div class="bg-blue-50 border-l-4 border-primary p-4 mb-6 rounded">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fa fa-info-circle text-primary"></i>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-blue-700">
+                        {{ alert }}
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Request Information Section -->
+        <div class="bg-white shadow-sm rounded-lg mb-6 overflow-hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-800">Request Information</h2>
+            </div>
+            <div class="p-6">
+                <dl class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <dt class="text-sm font-medium text-gray-500">Method</dt>
+                        <dd class="md:col-span-2 text-sm text-gray-900">{{ request.method }}</dd>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <dt class="text-sm font-medium text-gray-500">URL</dt>
+                        <dd class="md:col-span-2 text-sm text-gray-900">{{ request.url }}</dd>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <dt class="text-sm font-medium text-gray-500">Path</dt>
+                        <dd class="md:col-span-2 text-sm text-gray-900">{{ request.url.path }}</dd>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <dt class="text-sm font-medium text-gray-500">Client Host</dt>
+                        <dd class="md:col-span-2 text-sm text-gray-900">{{ request.client.host }}</dd>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <dt class="text-sm font-medium text-gray-500">Client Port</dt>
+                        <dd class="md:col-span-2 text-sm text-gray-900">{{ request.client.port }}</dd>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <dt class="text-sm font-medium text-gray-500">Headers</dt>
+                        <dd class="md:col-span-2 text-sm text-gray-900">
+                            <ul class="list-disc list-inside space-y-1">
+                                {% for name, value in request.headers.items() %}
+                                <li>{{ name }}: {{ value }}</li>
+                                {% endfor %}
+                            </ul>
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+
+        <footer class="text-center text-gray-500 text-sm mt-12">
+            <p>System Status Page</p>
+        </footer>
+    </div>
+</body>
+</html>
+    

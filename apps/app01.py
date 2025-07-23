@@ -3,28 +3,24 @@ from fastapi import Request
 from fastapi import Form
 from fastapi import status
 from fastapi import responses
+from fastapi import Depends
 from fastapi.exceptions import HTTPException
 from fastapi.templating import Jinja2Templates
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, field_validator
 from pydantic import ValidationError 
 from database.models_1 import *
 from core.hashing import Hasher
 from core.authentication import create_token
 from typing import List, Optional
-
+from core.authentication import Token, User
+from core.authentication import get_current_active_user
 import json
 
-async def authenticate_user(email: str, password: str):
-    user = await Users.filter(email=email)
-    print("user: ", user)
-    for i in user:
-        print("i", i)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-       # return False
-    if not Hasher.verify_password(plain_password=password, hashed_password=user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password")
-    return user
+
+
+
 
 user = APIRouter()
 
@@ -39,7 +35,12 @@ class UserIn(BaseModel):
     #def name_must_alpha(cls, v):
     #    assert v.isalpha(), 'name must be alpha'
     #    return v
-    
+ 
+
+@user.get("/users/me")
+async def get_me(current_user: dict = Depends(get_current_active_user)):
+    return current_user
+
 @user.get("/login")
 async def login():
     return {"login": "login"}
@@ -58,6 +59,7 @@ async def login(request: Request,
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password")
     
     access_token = create_token(data={"sub": user.email})
+    """
     response = responses.RedirectResponse(
         "/?alert=Successfully Logged In", status_code=status.HTTP_302_FOUND
     )
@@ -65,6 +67,8 @@ async def login(request: Request,
         key="access_token", value=f"Bearer {access_token}", httponly=True
     )
     return response
+    """
+    return {"status":"success", "access_token":access_token}
 
 
 @user.get("/register")
@@ -81,7 +85,10 @@ async def register(request: Request,
                              email=user_in.email,
                              password_hash=Hasher.get_password_hash(user_in.pwd),
         )
-        return user
+        #return user
+        return responses.RedirectResponse(
+            "/?alert=Successfully%20Registered", status_code=status.HTTP_302_FOUND
+        )
     except ValidationError as e:
         errors_list = json.loads(e.json())
         for item in errors_list:

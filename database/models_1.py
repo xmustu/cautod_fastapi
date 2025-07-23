@@ -47,10 +47,10 @@ class Tasks(Model):
 
     class Meta:
         table = "tasks"
-        indexes = [
-            ("idx_conversation_id", ["conversation_id"]),
-            ("idx_user_id", ["user_id"])
-        ]
+        #indexes = [
+        #    ("idx_conversation_id", ["conversation_id"]),
+        #    ("idx_user_id", ["user_id"])
+        #]
 
 
 # 几何建模结果模型
@@ -67,7 +67,7 @@ class GeometryResults(Model):
 
     class Meta:
         table = "geometry_results"
-        indexes = [("idx_task_id", ["task_id"])]
+        #indexes = [("idx_task_id", ["task_id"])]
 
 
 # 优化结果模型
@@ -86,4 +86,4 @@ class OptimizationResults(Model):
 
     class Meta:
         table = "optimization_results"
-        indexes = [("idx_task_id", ["task_id"])]
+        #indexes = [("idx_task_id", ["task_id"])]
