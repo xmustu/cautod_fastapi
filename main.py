@@ -18,10 +18,11 @@ register_tortoise(
     config=TORTOISE_ORM_sqlite
 )
 
-app.include_router(router)
+
 app.include_router(user, prefix="/user", tags=["用户部分", ])
 app.include_router(geometry, prefix="/geometry", tags=["几何建模", ])
 app.include_router(optimize, prefix="/optimize", tags=["设计优化", ])
+app.include_router(router, prefix="/api", tags=["功能", ])
 
 if __name__ == '__main__':
     uvicorn.run("main:app", host="127.0.0.1", port=8080,  reload=True)

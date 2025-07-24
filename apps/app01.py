@@ -37,7 +37,15 @@ class UserIn(BaseModel):
     #    return v
  
 
-@user.get("/users/me")
+@user.get("/{user_id}")
+async def get_user(user_id: int):
+    user = await Users.get(user_id=user_id).values("user_id", "email", "created_at")
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+@user.get("/me")
 async def get_me(current_user: dict = Depends(get_current_active_user)):
     return current_user
 
@@ -70,6 +78,9 @@ async def login(request: Request,
     """
     return {"status":"success", "access_token":access_token}
 
+@user.post("/google_login")
+async def google_login():
+    return {"login": "google login"}
 
 @user.get("/register")
 async def register(request: Request):

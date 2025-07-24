@@ -79,7 +79,7 @@ class SSEResponse(BaseModel):
 
 
 # 几何建模接口
-@geometry.post("/geometry")
+@geometry.post("/")
 def geometry_modeling(
     request: GeometryRequest,
     authorization: Optional[str] = None
