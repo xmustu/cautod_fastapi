@@ -53,7 +53,7 @@ async def get_me(current_user: dict = Depends(get_current_active_user)):
 async def login():
     return {"login": "login"}
 
-@user.post("/login")
+@user.post("/login",summary="用户登录，获取JWT令牌")
 async def login(request: Request,
                 email: str = Form(),
                 password: str = Form()):
@@ -87,7 +87,7 @@ async def register(request: Request):
     return {"content":"register page"}
     #return templates.TemplateResponse("auth/register.html", {"request": request})
 
-@user.post("/register")
+@user.post("/register",summary="用户注册")
 async def register(request: Request, 
                    user_in : UserIn):
     errors  = []

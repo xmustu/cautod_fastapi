@@ -6,9 +6,10 @@ from fastapi import status
 from fastapi import Header
 from pydantic import BaseModel
 from pydantic import Field
+from fastapi import Form
 from pydantic import validator, field_validator
 
-from core.authentication import authenticate_user
+from core.authentication import authenticate
 
 import asyncio
 import json 
@@ -54,21 +55,15 @@ class OptimizeResult(BaseModel):
 @optimize.post("/")
 async def optimize_design(
     request: OptimizeRequest,
-    authorization: Optional[str] = None
+    authorization: str = Form(...)
 ):
     """
     设计优化接口
     
     接收CAD模型文件和优化参数，进行设计优化并返回结果
     """
-    # 验证授权头
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="无效的授权令牌格式，应为 'Bearer <API_KEY>'"
-        )
-    
-    await authenticate_user(authorization.split("Bearer ")[1])
+    # 验证授权
+    authenticate(authorization)
     
     # 模拟SSE流式响应生成器
     def optimization_stream():

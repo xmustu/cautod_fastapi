@@ -86,3 +86,13 @@ def get_current_active_user(current_user: dict = Depends(get_current_user)):
     #if current_user.get("disabled"):
     #    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
     return current_user
+
+
+async def authenticate(authorization : str):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的授权令牌格式，应为 'Bearer <API_KEY>'"
+        )
+    
+    await authenticate_user(authorization.split("Bearer ")[1])

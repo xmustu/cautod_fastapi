@@ -4,13 +4,14 @@ from fastapi import APIRouter
 from fastapi import HTTPException
 from fastapi import status
 from fastapi import Header
+from fastapi import Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import validator, field_validator
 from pydantic import ValidationError
 
-from core.authentication import authenticate_user
+from core.authentication import authenticate
 
 #from sse_starlette import StreamingResponse
 import asyncio
@@ -82,18 +83,10 @@ class SSEResponse(BaseModel):
 @geometry.post("/")
 def geometry_modeling(
     request: GeometryRequest,
-    authorization: Optional[str] = None
+    authorization: str = Form(...)
 ):
-    # 验证授权头
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing authorization token"
-        )
-    
-    # 验证 token
-    authenticate_user(authorization.split("Bearer ")[1])
-
+    # 验证授权
+    authenticate(authorization)
     # 验证response_mode是否为streaming
     if request.response_mode != "streaming":
         raise HTTPException(
