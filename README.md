@@ -1,10 +1,14 @@
 1.git clone https://github.com/xmustu/cautod.git
 
-2.pip install -r requirements.txt
+2.conda create --name fastapi python=3.9
 
-3.cd cautod
+3.conda activate fastapi
 
-4.python main.py
+4.pip install -r requirements.txt
+
+5.cd cautod
+
+6.python main.py
 
 
 
