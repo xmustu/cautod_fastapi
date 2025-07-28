@@ -10,8 +10,10 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import validator, field_validator
 from pydantic import ValidationError
+from fastapi import Depends
 
-from core.authentication import authenticate
+from core.authentication import get_current_active_user
+from core.authentication import User
 
 #from sse_starlette import StreamingResponse
 import asyncio
@@ -73,6 +75,10 @@ class GenerationMetadata(BaseModel):
             raise ValueError('预览图片必须是.png格式') 
         return v
 
+class SSETextChunk(BaseModel):
+    event: str = "text_chunk"
+    text: str
+
 class SSEResponse(BaseModel):
     event: str = "message_end"
     answer: str  #输出描述文本
@@ -81,12 +87,12 @@ class SSEResponse(BaseModel):
 
 # 几何建模接口
 @geometry.post("/")
-def geometry_modeling(
+async def geometry_modeling(
     request: GeometryRequest,
-    authorization: str = Header(...)
+    current_user: User = Depends(get_current_active_user)
 ):
-    # 验证授权
-    authenticate(authorization)
+    # 认证已由 Depends(get_current_active_user) 自动处理
+    
     # 验证response_mode是否为streaming
     if request.response_mode != "streaming":
         raise HTTPException(
@@ -95,29 +101,31 @@ def geometry_modeling(
         )
     
     # 模拟SSE流式响应生成器
-    def stream_response():
-        # 模拟生成响应数据
-        response_data = SSEResponse(
-        answer="已根据您的需求生成带孔矩形零件，尺寸符合设计要求",
-        files=[
-            FileItem(
-                type="image",
-                transfer_method="remote_url",
-                url="https://example.com/reference.png"
-            )
-        ],
-        metadata=GenerationMetadata(
-            cad_file="https://example.com/generated_model.step",
-            code_file="https://example.com/parametric_model.py",
-            preview_image="https://example.com/model_preview.png"
-        )
-        )
+    async def stream_generator():
+        full_answer = "已根据您的需求生成带孔矩形零件，尺寸符合设计要求。"
+        
+        # 1. 模拟流式发送文本块
+        for i in range(0, len(full_answer), 5): # 一次发送5个字符
+            chunk = full_answer[i:i+5]
+            text_chunk_data = SSETextChunk(text=chunk)
+            sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+            yield sse_chunk
+            await asyncio.sleep(0.05) # 模拟AI思考的延迟
 
-        # 转换为 SSE 格式的响应字符串
-        sse_data = f'event: message_end\ndata: {response_data.model_dump_json()}\n\n'
-        return sse_data
-    #return StreamingResponse(
-    #    stream_response(),
-    #    media_type="text/event-stream"
-    #)
-    return stream_response()
+        # 2. 发送包含完整元数据的结束消息
+        final_response_data = SSEResponse(
+            answer=full_answer,
+            metadata=GenerationMetadata(
+                cad_file="https://example.com/generated_model.step",
+                code_file="https://example.com/parametric_model.py",
+                preview_image="https://example.com/preview_image.png" # 使用一个符合.png格式的URL进行测试
+            )
+        )
+        
+        sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
+        yield sse_final
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream"
+    )
