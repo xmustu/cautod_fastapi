@@ -55,7 +55,7 @@ class OptimizeResult(BaseModel):
 @optimize.post("/")
 async def optimize_design(
     request: OptimizeRequest,
-    authorization: str = Form(...)
+    authorization: str = Header(...)
 ):
     """
     设计优化接口
