@@ -16,6 +16,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
+
 class Token(BaseModel):
     status: str
     token : str
@@ -25,6 +26,7 @@ class User(BaseModel):
     email: str
     created_at: datetime
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
 
 
 def create_token(data: dict):
