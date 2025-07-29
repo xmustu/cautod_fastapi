@@ -6,6 +6,7 @@ from apps.router import router
 from apps.app01 import user
 from apps.app02 import geometry
 from apps.app03 import optimize
+from apps.tasks import router as tasks_router
 
 from tortoise.contrib.fastapi import register_tortoise
 from settings import TORTOISE_ORM_sqlite
@@ -36,9 +37,10 @@ register_tortoise(
 )
 
 
-app.include_router(user, prefix="/user", tags=["用户部分", ])
-app.include_router(geometry, prefix="/geometry", tags=["几何建模", ])
-app.include_router(optimize, prefix="/optimize", tags=["设计优化", ])
+app.include_router(user, prefix="/api/user", tags=["用户部分", ])
+app.include_router(geometry, prefix="/api/geometry", tags=["几何建模", ])
+app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
+app.include_router(tasks_router, prefix="/api") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
 
 if __name__ == '__main__':

@@ -31,16 +31,18 @@ class Conversations(Model):
 # 任务模型
 class Tasks(Model):
     task_id = fields.IntField(pk=True)
-    conversation_id = fields.CharField(max_length=64)
+    conversation = fields.ForeignKeyField(
+        "models.Conversations", related_name="tasks", to_field="conversation_id"
+    )
     user_id = fields.IntField()
-    task_type = fields.CharField(max_length=10)  # 'geometry' or 'optimize'
-    status = fields.CharField(max_length=10, default="pending")
+    task_type = fields.CharField(max_length=50)  # 'geometry', 'part_retrieval', 'design_optimization'
+    status = fields.CharField(max_length=20, default="pending")
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
 
     # 外部关系（逻辑关联）
     user: ForeignKeyRelation[Users] = None  # 逻辑关联
-    conversation: ForeignKeyRelation[Conversations] = None  # 逻辑关联
+    # conversation: ForeignKeyRelation[Conversations] = None  # 逻辑关联 - This is now handled by the ForeignKeyField
     geometry_result: ForeignKeyRelation["GeometryResults"] = fields.ReverseRelation["GeometryResults"]
     optimization_result: ForeignKeyRelation["OptimizationResults"] = fields.ReverseRelation["OptimizationResults"]
     error_logs: list["ErrorLogs"] = fields.ReverseRelation["ErrorLogs"]
