@@ -11,7 +11,8 @@ from pydantic import Field
 from pydantic import validator, field_validator
 from pydantic import ValidationError
 from fastapi import Depends
-
+import uuid
+from database.models_1 import Conversations
 from core.authentication import get_current_active_user
 from core.authentication import User
 
@@ -75,6 +76,10 @@ class GenerationMetadata(BaseModel):
             raise ValueError('预览图片必须是.png格式') 
         return v
 
+class SSEConversationInfo(BaseModel):
+    event: str = "conversation_info"
+    conversation_id: str
+
 class SSETextChunk(BaseModel):
     event: str = "text_chunk"
     text: str
@@ -99,9 +104,23 @@ async def geometry_modeling(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="response_mode must be 'streaming'"
         )
+
+    # 处理会话 ID
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+
+    # 获取或创建会话
+    conversation, created = await Conversations.get_or_create(
+        conversation_id=conversation_id,
+        defaults={"user_id": current_user.user_id, "title": request.query}
+    )
     
     # 模拟SSE流式响应生成器
     async def stream_generator():
+        # 首先发送会话信息
+        conversation_info_data = SSEConversationInfo(conversation_id=conversation_id)
+        sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
+        yield sse_conv_info
+
         full_answer = "已根据您的需求生成带孔矩形零件，尺寸符合设计要求。"
         
         # 1. 模拟流式发送文本块

@@ -101,4 +101,3 @@ async def get_conservation(request: Request, user_id: str, authorization : str =
     authenticate(authorization)
     conversations = await Conversations.filter(user_id=user_id).all()
     return conversations
-    
