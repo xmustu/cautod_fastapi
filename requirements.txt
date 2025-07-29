@@ -10,3 +10,5 @@ sqlalchemy
 passlib
 bcrypt
 sse-starlette
+authlib
+pydantic-settings

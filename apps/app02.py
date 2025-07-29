@@ -83,7 +83,7 @@ class SSEResponse(BaseModel):
 @geometry.post("/")
 def geometry_modeling(
     request: GeometryRequest,
-    authorization: str = Form(...)
+    authorization: str = Header(...)
 ):
     # 验证授权
     authenticate(authorization)
@@ -121,4 +121,3 @@ def geometry_modeling(
     #    media_type="text/event-stream"
     #)
     return stream_response()
-

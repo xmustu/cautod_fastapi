@@ -16,6 +16,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
+
 class Token(BaseModel):
     status: str
     token : str
@@ -25,6 +26,7 @@ class User(BaseModel):
     email: str
     created_at: datetime
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
 
 
 def create_token(data: dict):
@@ -62,29 +64,35 @@ async def authenticate_user(token: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invlid authorization!")
 
 
-async def get_current_user(token: str):
-    """获取当前用户"""
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    """
+    解码 token 并获取当前用户信息。
+    现在它依赖于 oauth2_scheme，会自动从 'Authorization: Bearer <token>' 头中提取 token。
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        playroad = verify_token(token)
-        print("playroad: ", playroad)
-        email = playroad.get("sub")
+        payload = verify_token(token)
+        email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
     except InvalidTokenError:
         raise credentials_exception
     
-    user = await Users.filter(email=email).values("user_id", "email", "created_at")
+    # 返回 Pydantic 模型而不是字典，以便 FastAPI 进行类型检查
+    user = await Users.get_or_none(email=email)
+    if user is None:
+        raise credentials_exception
     return user
 
-def get_current_active_user(current_user: dict = Depends(get_current_user)):
+async def get_current_active_user(current_user: User = Depends(get_current_user)):
     """获取当前活跃用户"""
-    #if current_user.get("disabled"):
-    #    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
+    # 这里可以添加检查用户是否被禁用的逻辑
+    # if current_user.disabled:
+    #     raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
 
