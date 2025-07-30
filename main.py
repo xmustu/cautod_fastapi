@@ -8,6 +8,8 @@ from apps.app01 import user
 from apps.app02 import geometry
 from apps.app03 import optimize
 from apps.tasks import router as tasks_router
+from apps.chat import router as chat_router
+from test_f.playground import router as test_router
 
 from core.middleware import count_time_middleware, request_response_middleware
 from tortoise.contrib.fastapi import register_tortoise
@@ -65,6 +67,8 @@ app.include_router(geometry, prefix="/api/geometry", tags=["几何建模", ])
 app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
 app.include_router(tasks_router, prefix="/api") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
+app.include_router(chat_router,prefix="/api", tags=["对话管理", ])
+app.include_router(test_router)
 
 if __name__ == '__main__':
     uvicorn.run("main:app", host="127.0.0.1", port=8080,  reload=True)

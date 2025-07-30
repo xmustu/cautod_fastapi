@@ -4,6 +4,7 @@ from tortoise.fields.relational import ForeignKeyRelation
 # 用户模型
 class Users(Model):
     user_id = fields.IntField(pk=True, auto_increment=True)
+    username = fields.CharField(max_length=255, default="user")
     email = fields.CharField(max_length=255, unique=True)
     password_hash = fields.CharField(max_length=255)
     created_at = fields.DatetimeField(auto_now_add=True)

@@ -175,6 +175,7 @@ async def register_get(request: Request):
 @user.post("/register", summary="用户注册")
 async def register(
     #user_id: int = Form(),
+    username: str = Form(),
     email: str = Form(),
     pwd: str = Form()
 ):
@@ -189,6 +190,7 @@ async def register(
         hashed_password = Hasher.get_password_hash(pwd)
         user = await Users.create(
             #user_id=user_id,
+            username=username,
             email=email,
             password_hash=hashed_password,
         )
