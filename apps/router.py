@@ -12,6 +12,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import hashlib
 from core.authentication import authenticate
 from database.models_1 import *
+from .schemas import ConversationOut
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
@@ -88,17 +89,17 @@ async def get_task_status(task_id: str, authorization : str = Form()):
     return status
 
 
-@router.post("/conservation/{conversation_id}",summary="获取单个会话")
-async def get_conservation(request: Request, conversation_id: str, authorization : str = Form()):
+@router.post("/conversation/{conversation_id}", summary="获取单个会话", response_model=ConversationOut)
+async def get_conversation(request: Request, conversation_id: str, authorization : str = Form()):
     # 验证授权
     authenticate(authorization)
-    conver = await Conversations.get(conversation_id=conversation_id)
+    # 获取会话并预加载相关的任务
+    conver = await Conversations.get(conversation_id=conversation_id).prefetch_related("tasks")
     return conver
 
-@router.post("/conservation_all/{user_id}", summary="获取全部会话")
-async def get_conservation(request: Request, user_id: str, authorization : str = Form()):
+@router.post("/conversation_all/{user_id}", summary="获取全部会话")
+async def get_all_conversations(request: Request, user_id: str, authorization : str = Form()):
     # 验证授权
     authenticate(authorization)
     conversations = await Conversations.filter(user_id=user_id).all()
     return conversations
-    

@@ -82,11 +82,17 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except InvalidTokenError:
         raise credentials_exception
     
-    # 返回 Pydantic 模型而不是字典，以便 FastAPI 进行类型检查
-    user = await Users.get_or_none(email=email)
-    if user is None:
+    # 从数据库获取 ORM 模型实例
+    user_orm = await Users.get_or_none(email=email)
+    if user_orm is None:
         raise credentials_exception
-    return user
+    
+    # 将 ORM 模型实例转换为 Pydantic 模型实例并返回
+    return User(
+        user_id=user_orm.user_id,
+        email=user_orm.email,
+        created_at=user_orm.created_at
+    )
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)):
     """获取当前活跃用户"""

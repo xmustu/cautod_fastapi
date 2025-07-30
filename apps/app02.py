@@ -10,8 +10,12 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import validator, field_validator
 from pydantic import ValidationError
-
-from core.authentication import authenticate
+from fastapi import Depends
+import uuid
+from datetime import datetime
+from database.models_1 import Conversations
+from core.authentication import get_current_active_user
+from core.authentication import User
 
 #from sse_starlette import StreamingResponse
 import asyncio
@@ -19,33 +23,31 @@ import json
 
 geometry = APIRouter()
 
-@geometry.get("") 
+@geometry.get("/")
 async def geometry_home():
     return {"message": "Geometry modeling home page"}
 
 
 
 
-# 定义请求模型
+# 定义请求和响应模型
+class ConversationCreateRequest(BaseModel):
+    title: str = Field(..., max_length=100, description="新会话的标题")
+
+class ConversationResponse(BaseModel):
+    conversation_id: str
+    user_id: int
+    title: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True # Pydantic V2, or orm_mode = True for V1
+
 class FileItem(BaseModel):
     type: str = Field(..., description="文件类型（如 'image'）")
     transfer_method: str = Field(..., description="文件传输方式（如 'remote_url'）")
     url: str = Field(..., description="文件访问 URL")
 
-class GeometryRequest(BaseModel):
-    query: str = Field(..., description="用户自然语言描述（几何建模意图）")
-    response_mode: str = Field("streaming", description="固定值 'streaming'，表示 SSE 流式响应模式")
-    user: str = Field(..., description="用户唯一标识")
-    conversation_id: Optional[str] = Field(None, description="会话 ID，用于多轮对话")
-    inputs: Optional[Dict] = Field(None, description="附加参数（如长、宽、孔径等设计参数）")
-    files: Optional[List[FileItem]] = Field(None, description="文件列表，用于上传参考图片或草图")
-
-    @field_validator('response_mode')
-    def response_mode_must_be_streaming(cls, v):
-        """验证response_mode必须为streaming"""
-        if v != "streaming":
-            raise ValueError('response_mode must be "streaming"')
-        return v
 
 # 响应模型
 class GenerationMetadata(BaseModel):
@@ -73,51 +75,34 @@ class GenerationMetadata(BaseModel):
             raise ValueError('预览图片必须是.png格式') 
         return v
 
+class SSEConversationInfo(BaseModel):
+    event: str = "conversation_info"
+    conversation_id: str
+    task_id: str # 任务ID也应在任务开始时告知前端
+
+class SSETextChunk(BaseModel):
+    event: str = "text_chunk"
+    text: str
+
 class SSEResponse(BaseModel):
     event: str = "message_end"
     answer: str  #输出描述文本
     metadata: GenerationMetadata
 
 
-# 几何建模接口
-@geometry.post("/")
-def geometry_modeling(
-    request: GeometryRequest,
-    authorization: str = Header(...)
+# 创建新会话的接口
+@geometry.post("/conversation", response_model=ConversationResponse)
+async def create_conversation(
+    request: ConversationCreateRequest,
+    current_user: User = Depends(get_current_active_user)
 ):
-    # 验证授权
-    authenticate(authorization)
-    # 验证response_mode是否为streaming
-    if request.response_mode != "streaming":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="response_mode must be 'streaming'"
-        )
-    
-    # 模拟SSE流式响应生成器
-    def stream_response():
-        # 模拟生成响应数据
-        response_data = SSEResponse(
-        answer="已根据您的需求生成带孔矩形零件，尺寸符合设计要求",
-        files=[
-            FileItem(
-                type="image",
-                transfer_method="remote_url",
-                url="https://example.com/reference.png"
-            )
-        ],
-        metadata=GenerationMetadata(
-            cad_file="https://example.com/generated_model.step",
-            code_file="https://example.com/parametric_model.py",
-            preview_image="https://example.com/model_preview.png"
-        )
-        )
-
-        # 转换为 SSE 格式的响应字符串
-        sse_data = f'event: message_end\ndata: {response_data.model_dump_json()}\n\n'
-        return sse_data
-    #return StreamingResponse(
-    #    stream_response(),
-    #    media_type="text/event-stream"
-    #)
-    return stream_response()
+    """
+    创建一个新的会话并将其存储在数据库中。
+    """
+    conversation_id = str(uuid.uuid4())
+    conversation = await Conversations.create(
+        conversation_id=conversation_id,
+        user_id=current_user.user_id,
+        title=request.title
+    )
+    return conversation
