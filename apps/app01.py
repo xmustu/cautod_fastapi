@@ -174,13 +174,13 @@ async def register_get(request: Request):
 
 @user.post("/register", summary="用户注册")
 async def register(
-    user_id: int = Form(),
+    #user_id: int = Form(),
     email: str = Form(),
     pwd: str = Form()
 ):
     # 检查用户ID或邮箱是否已存在
-    if await Users.filter(user_id=user_id).exists():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该用户ID已被注册")
+    #if await Users.filter(user_id=user_id).exists():
+    #    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该用户ID已被注册")
     if await Users.filter(email=email).exists():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该邮箱已被注册")
 
@@ -188,7 +188,7 @@ async def register(
         # 对密码进行哈希处理并创建用户
         hashed_password = Hasher.get_password_hash(pwd)
         user = await Users.create(
-            user_id=user_id,
+            #user_id=user_id,
             email=email,
             password_hash=hashed_password,
         )
