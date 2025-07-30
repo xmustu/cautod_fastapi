@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -8,11 +9,21 @@ from apps.app02 import geometry
 from apps.app03 import optimize
 from apps.tasks import router as tasks_router
 
+from core.middleware import count_time_middleware, request_response_middleware
 from tortoise.contrib.fastapi import register_tortoise
 from settings import TORTOISE_ORM_sqlite
+from contextlib import asynccontextmanager
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Start.")
+    yield  
+    print("End.")
+    
+app = FastAPI(lifespan=lifespan)
+
+count_time_middleware(app)  # 计时中间件
 
 # CORS 中间件配置
 origins = [
