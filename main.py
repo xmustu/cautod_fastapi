@@ -13,13 +13,25 @@ from core.middleware import count_time_middleware, request_response_middleware
 from tortoise.contrib.fastapi import register_tortoise
 from settings import TORTOISE_ORM_sqlite
 from contextlib import asynccontextmanager
-
+from database.redis import redis_connect
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Start.")
+    # 启动时执行的事件
+
+    #启动日志服务
+    #连接数据库
+    app.state.redis = await redis_connect()  # 连接到 Redis 数据库
+    #获取动态配置
+    #启用第三方的服务
+    #其他
     yield  
-    print("End.")
+    # 终止时执行的事件
+    #关闭日志服务
+    #关闭数据库连接
+    app.state.redis.close()  # 关闭 Redis 连接
+    #推出第三方服务
+    #其他
     
 app = FastAPI(lifespan=lifespan)
 

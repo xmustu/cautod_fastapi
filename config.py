@@ -15,4 +15,13 @@ class Settings(BaseSettings):
     GOOGLE_TOKEN_URL: str
     GOOGLE_USER_INFO_URL: str
 
+    REDIS_HOST: str
+    REDIS_PORT: int
+    REDIS_PASSWORD: str = None
     model_config = SettingsConfigDict(env_file=".env")
+
+
+
+
+
+
