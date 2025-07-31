@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any, List
 from fastapi.responses import StreamingResponse
 import asyncio
 import json
+from datetime import datetime
 
 from core.authentication import get_current_active_user, User
 from database.models_1 import Tasks, Conversations
@@ -11,7 +12,6 @@ from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SS
 
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
-    prefix="/tasks",
     tags=["任务管理"]
 )
 
@@ -44,8 +44,43 @@ class TaskExecuteRequest(BaseModel):
     # ... 其他特定于任务的参数
     files: Optional[List[FileItem]] = Field(None, description="文件列表")
 
+class PendingTaskResponse(BaseModel):
+    """待处理任务的响应体模型"""
+    task_id: int
+    task_type: str
+    created_at: datetime
+    conversation_title: str
+
+    class Config:
+        from_attributes = True
+
 
 # --- API 端点实现 ---
+
+@router.get("/pending", response_model=List[PendingTaskResponse], summary="获取所有待处理的任务")
+async def get_pending_tasks(
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    获取当前用户所有状态为 'pending' 的任务，并按创建时间升序排列。
+    """
+    pending_tasks = await Tasks.filter(
+        user_id=current_user.user_id,
+        status="pending"
+    ).order_by("created_at").prefetch_related("conversation")
+
+    # 手动构建响应数据，因为 Pydantic 模型需要 conversation_title
+    response_data = [
+        PendingTaskResponse(
+            task_id=task.task_id,
+            task_type=task.task_type,
+            created_at=task.created_at,
+            conversation_title=task.conversation.title if task.conversation else "未知会话"
+        )
+        for task in pending_tasks
+    ]
+    
+    return response_data
 
 @router.post("", response_model=TaskCreateResponse, summary="创建新任务")
 async def create_task(
