@@ -11,7 +11,7 @@ from apps.tasks import router as tasks_router
 
 from core.middleware import count_time_middleware, request_response_middleware
 from tortoise.contrib.fastapi import register_tortoise
-from settings import TORTOISE_ORM_sqlite
+from settings import TORTOISE_ORM_sqlite, TORTOISE_ORM_mysql
 from contextlib import asynccontextmanager
 from database.redis import redis_connect
 
@@ -54,7 +54,7 @@ app.add_middleware(
 
 register_tortoise(
     app,
-    config=TORTOISE_ORM_sqlite,
+    config=TORTOISE_ORM_mysql,  # 使用 MySQL 配置
     generate_schemas=True,  # 在应用启动时自动创建数据库表
     add_exception_handlers=True,
 )
