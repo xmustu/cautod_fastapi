@@ -5,6 +5,7 @@ python-multipart
 aerich
 tortoise-orm
 aiosqlite
+aiomysql
 pyjwt
 sqlalchemy
 passlib
@@ -12,3 +13,7 @@ bcrypt
 sse-starlette
 authlib
 pydantic-settings
+httpx
+Jinja2
+redis
+tomlkit
