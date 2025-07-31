@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     REDIS_HOST: str
     REDIS_PORT: int
     REDIS_PASSWORD: str = None
+    REDIS_AVAILABLE: bool
     model_config = SettingsConfigDict(env_file=".env")
 
 
