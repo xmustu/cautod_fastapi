@@ -8,13 +8,21 @@ class Users(Model):
     email = fields.CharField(max_length=255, unique=True)
     password_hash = fields.CharField(max_length=255)
     created_at = fields.DatetimeField(auto_now_add=True)
-
+    is_activate = fields.BooleanField(default=True)
+    role_id = fields.ForeignKeyField('models.Role', related_name='users',description="用户角色")
     # 任务关系（可选）
     #tasks: list["Tasks"] = fields.ReverseRelation["Tasks"]
 
     class Meta:
         table = "users"
 
+class Role(Model):
+    role_id = fields.IntField(pk=True, auto_increment=True)
+    permissions = fields.CharField(max_length=255, default="read,write")
+    user_id = fields.IntField(description="用户ID")
+
+    class Meta:
+        table = "roles"
 # 会话模型
 class Conversations(Model):
     conversation_id = fields.CharField(max_length=64, pk=True)

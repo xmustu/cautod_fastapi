@@ -8,7 +8,7 @@ from apps.app01 import user
 from apps.app02 import geometry
 from apps.app03 import optimize
 from apps.tasks import router as tasks_router
-
+from apps.chat import router as chat_router
 from core.middleware import count_time_middleware, request_response_middleware
 from tortoise.contrib.fastapi import register_tortoise
 from settings import TORTOISE_ORM_sqlite, TORTOISE_ORM_mysql
@@ -54,7 +54,7 @@ app.add_middleware(
 
 register_tortoise(
     app,
-    config=TORTOISE_ORM_mysql,  # 使用 MySQL 配置
+    config=TORTOISE_ORM_sqlite,  # 使用 MySQL 配置
     generate_schemas=True,  # 在应用启动时自动创建数据库表
     add_exception_handlers=True,
 )
@@ -65,6 +65,7 @@ app.include_router(geometry, prefix="/api/geometry", tags=["几何建模", ])
 app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
 app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
+app.include_router(chat_router)
 
 if __name__ == '__main__':
     uvicorn.run("main:app", host="127.0.0.1", port=8080,  reload=True)
