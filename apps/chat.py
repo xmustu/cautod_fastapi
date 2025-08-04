@@ -146,14 +146,15 @@ async def chat_stream(request: Request):
 @router.get("/task", summary="获取任务的对话历史")
 async def get_task_history(
     request: Request,
-    user_id: str = Query(..., description="用户ID"),
+    #user_id: str = Query(..., description="用户ID"),
     task_id: str = Query(..., description="任务ID"),
+    current_user: User = Depends(get_current_active_user),
 ):
     redis_client = request.app.state.redis
     """获取对话历史记录"""
 
     try:
-        history = await get_messages_history(user_id, task_id, redis_client)
+        history = await get_messages_history(current_user.user_id, task_id, redis_client)
         return {
             "task_id": task_id,
             "message": history,
@@ -166,7 +167,8 @@ async def get_task_history(
 @router.get("/history",summary="获取用户对话历史记录")
 async def get_user_history(
     request: Request,
-    user_id: str = Query(..., description="用户ID"),
+    #user_id: str = Query(..., description="用户ID"),
+    current_user: User = Depends(get_current_active_user),
 ):
     redis_client = request.app.state.redis
     """
@@ -175,7 +177,7 @@ async def get_user_history(
     try:
         history = []
         if settings.REDIS_AVAILABLE and redis_client:
-            user_task_key = get_user_task_key(user_id)
+            user_task_key = get_user_task_key(current_user.user_id)
             tasks_data = await redis_client.hgetall(user_task_key)
 
             for task_id, task_info in tasks_data.items():
@@ -190,7 +192,7 @@ async def get_user_history(
             raise NotImplementedError
         
         return {
-            "user_id": user_id,
+            "user_id": current_user.user_id,
             "history": history,
             "total": len(history)
             }
@@ -201,14 +203,15 @@ async def get_user_history(
 async def delete_task(
     request: Request,
     task_id: str, 
-    user_id:str = Query(..., description="用户ID"),
+    #user_id:str = Query(..., description="用户ID"),
+    current_user: User = Depends(get_current_active_user),
 ):
     redis_client = request.app.state.redis
     try:
         if settings.REDIS_AVAILABLE and redis_client:
             # 从Redis删除任务历史
-            message_key = get_message_key(user_id, task_id)
-            user_task_key = get_user_task_key(user_id)
+            message_key = get_message_key(current_user.user_id, task_id)
+            user_task_key = get_user_task_key(current_user.user_id)
 
             #输出对话历史
             await redis_client.delete(message_key)
@@ -228,20 +231,21 @@ async def delete_task(
 async def clear_task_history(
     request: Request,
     task_id: str, 
-    user_id: str = Query(..., description="用户ID"),
+    #user_id: str = Query(..., description="用户ID"),
+    current_user: User = Depends(get_current_active_user),
 ):
     redis_client = request.app.state.redis
     """清除指定任务的对话历史，但保留任务记录"""
     try:
         if settings.REDIS_AVAILABLE and redis_client:
             # 从Redis删除对话历史
-            message_key = get_message_key(user_id, task_id)
+            message_key = get_message_key(current_user.user_id, task_id)
 
             #删除对话历史
             await redis_client.delete(message_key)
 
             # 更新任务信息， 保留任务单清空最后消息
-            user_task_key = get_user_task_key(user_id)
+            user_task_key = get_user_task_key(current_user.user_id)
             task_info = {
                 "task_id": task_id,
                 "last_message": "",
