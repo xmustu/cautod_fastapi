@@ -100,6 +100,6 @@ async def get_conversation(request: Request, conversation_id: str, authorization
 @router.post("/conversation_all/{user_id}", summary="获取全部会话")
 async def get_all_conversations(request: Request, user_id: str, authorization : str = Form()):
     # 验证授权
-    authenticate(authorization)
+    await authenticate(authorization)
     conversations = await Conversations.filter(user_id=user_id).all()
     return conversations

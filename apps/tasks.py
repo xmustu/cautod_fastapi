@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from fastapi.responses import StreamingResponse
@@ -9,7 +9,7 @@ from datetime import datetime
 from core.authentication import get_current_active_user, User
 from database.models_1 import Tasks, Conversations
 from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem
-
+from apps.chat import save_message_to_redis, Message
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
     tags=["任务管理"]
@@ -84,9 +84,12 @@ async def get_pending_tasks(
 
 @router.post("", response_model=TaskCreateResponse, summary="创建新任务")
 async def create_task(
+    request: Request,
     task_data: TaskCreateRequest,
     current_user: User = Depends(get_current_active_user)
 ):
+    print("task_data: ", task_data)
+    redis_client = request.app.state.redis
     """
     创建并注册一个新的任务实例。
     
@@ -112,14 +115,25 @@ async def create_task(
         # 'details' 字段在 Tasks 模型中不存在，因此不直接保存
     )
 
+    # 存储对话的用户信息到redis
+    #message = Message("user", task_data.details.get("query", ""), datetime.now())
+    message = {
+       "role": "user",
+        "content": task_data.details.get("query"),
+        "created_at": datetime.now().isoformat(),
+    }
+    await save_message_to_redis(user_id=current_user.user_id, task_id=new_task.task_id, message=message, redis_client=redis_client)
+
     return new_task
 
 
 @router.post("/execute", summary="执行任务")
 async def execute_task(
+    global_request: Request,  # 使用全局请求对象
     request: TaskExecuteRequest,
     current_user: User = Depends(get_current_active_user)
 ):
+    redis_client = global_request.app.state.redis
     """
     根据 task_type 执行一个已创建的任务。
     """
@@ -135,6 +149,9 @@ async def execute_task(
             detail="Task not found or does not belong to the current user/conversation."
         )
 
+    assistant_message = {
+        "role": "assistant",
+    }
     # 更新任务状态为“处理中”
     task.status = "processing"
     await task.save()
@@ -172,6 +189,23 @@ async def execute_task(
                 sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
                 yield sse_final
 
+                # 3. 模拟保存生成的消息到数据库
+                assistant_message["content"] = sse_final
+                # 保存助手消息到Redis
+                #message = Message("assistant", assistant_message["content"], datetime.now())
+                message = {
+                            "role": "assistant",
+                            "content": assistant_message["content"],
+                            "created_at": datetime.now().isoformat(),
+                }
+                print("结果回复信息: ", message)
+                await save_message_to_redis(
+                    user_id=current_user.user_id, 
+                    task_id=request.task_id, 
+                    message=message,
+                    redis_client=redis_client
+                )
+
                 # 任务成功完成，更新状态
                 task.status = "completed"
                 await task.save()
@@ -190,6 +224,25 @@ async def execute_task(
 
     elif request.task_type == "part_retrieval":
         # TODO: 在这里实现零件检索的逻辑
+
+        #模拟保存生成的消息到数据库, 仅使用示例
+        assistant_message["content"] = "Part retrieval completed!\n See:"
+        # 保存助手消息到Redis
+        #assistant_message["created_at"] = datetime.now().isoformat()
+        #message = Message("assistant", assistant_message["content"], datetime.now())
+        message = {
+                            "role": "assistant",
+                            "content": assistant_message["content"],
+                            "created_at": datetime.now().isoformat(),
+                }
+        print("结果回复信息: ", message)
+        await save_message_to_redis(
+                    user_id=current_user.user_id, 
+                    task_id=request.task_id, 
+                    message=message,
+                    redis_client=redis_client
+                )
+        
         # 任务成功完成，更新状态
         task.status = "completed"
         await task.save()
@@ -197,15 +250,56 @@ async def execute_task(
         
     elif request.task_type == "design_optimization":
         # TODO: 在这里实现设计优化的逻辑
+
+        #模拟保存生成的消息到数据库, 仅使用示例
+        assistant_message["content"] = "Design optimization completed!\n See:"
+        # 保存助手消息到Redis
+        #assistant_message["created_at"] = datetime.now().isoformat()
+        #message = Message("assistant", assistant_message["content"], datetime.now())
+        message = {
+                            "role": "assistant",
+                            "content": assistant_message["content"],
+                            "created_at": datetime.now().isoformat(),
+                }
+        print("结果回复信息: ", message)
+        await save_message_to_redis(
+                    user_id=current_user.user_id, 
+                    task_id=request.task_id, 
+                    message=message,
+                    redis_client=redis_client
+                )
+        
         # 任务成功完成，更新状态
         task.status = "completed"
         await task.save()
         return {"message": "Design optimization completed", "results": {}}
 
     else:
+
+        #模拟保存生成的消息到数据库, 仅使用示例
+        assistant_message["content"] = "Unknown task type. Please check your request."
+        # 保存助手消息到Redis
+        #assistant_message["created_at"] = datetime.now().isoformat()
+        #message = Message("assistant", assistant_message["content"], datetime.now())
+        message = {
+                            "role": "assistant",
+                            "content": assistant_message["content"],
+                            "created_at": datetime.now().isoformat(),
+                }
+        print("结果回复信息: ", message)
+        await save_message_to_redis(
+                    user_id=current_user.user_id, 
+                    task_id=request.task_id, 
+                    message=message,
+                    redis_client=redis_client
+                )
+        
         task.status = "failed"
         await task.save()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown task type: {request.task_type}"
         )
+    
+   
+

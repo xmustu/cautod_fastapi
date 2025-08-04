@@ -107,6 +107,7 @@ async def github_callback(code: str):
             },
             headers={"Accept": "application/json"},
         )
+        print("code: ")
         print("token_response: ", token_response)
         access_token = token_response.json().get("access_token")
         if not access_token:

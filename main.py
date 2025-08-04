@@ -33,6 +33,8 @@ async def lifespan(app: FastAPI):
     #推出第三方服务
     #其他
     
+
+
 app = FastAPI(lifespan=lifespan)
 
 count_time_middleware(app)  # 计时中间件
