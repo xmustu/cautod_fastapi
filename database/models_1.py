@@ -8,8 +8,8 @@ class Users(Model):
     email = fields.CharField(max_length=255, unique=True)
     password_hash = fields.CharField(max_length=255)
     created_at = fields.DatetimeField(auto_now_add=True)
-    is_activate = fields.BooleanField(default=True)
-    role_id = fields.ForeignKeyField('models.Role', related_name='users',description="用户角色")
+    #is_activate = fields.BooleanField(default=True)
+    #role_id = fields.ForeignKeyField('models.Role', related_name='users',description="用户角色")
     # 任务关系（可选）
     #tasks: list["Tasks"] = fields.ReverseRelation["Tasks"]
 

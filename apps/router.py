@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import hashlib
 from core.authentication import authenticate
+from core.authentication import get_current_active_user, User
 from database.models_1 import *
 from .schemas import ConversationOut
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -40,12 +41,13 @@ def home(request: Request, alert: Optional[str] = None):
 @router.post("/upload_file", summary="上传文件")
 async def upload_file(*, 
                 file: UploadFile,
-                authorization : str = Form(),
+                #authorization : str = Form(),
+                current_user: User = Depends(get_current_active_user),
                 path: Optional[str] = None,
                 ):
     
     # 验证授权
-    authenticate(authorization)
+    #authenticate(authorization)
     file_local = await save_file(file, path)
     return {"file_name":file.filename, # hash随机命名
             "content_type": file.content_type,
@@ -57,11 +59,12 @@ async def upload_file(*,
 @router.post("/download_file/{file_name}", summary="下载文件")
 async def download_file(
                   file_name: str,
-                  authorization : str = Form(),
+                  #authorization : str = Form(),
+                  current_user: User = Depends(get_current_active_user),
                   path: Optional[str] = None):
 
     # 验证授权
-    authenticate(authorization)
+    #authenticate(authorization)
 
     """
     raise NotimpltedError
@@ -82,24 +85,30 @@ async def download_file(
         "/result_status/{task_id}",
         #tags=["Optimization"],
         summary="获取任务状态")
-async def get_task_status(task_id: str, authorization : str = Form()):
+async def get_task_status(task_id: str, #authorization : str = Form()):
+                          current_user: User = Depends(get_current_active_user)
+):
     # 验证授权
-    authenticate(authorization)
+    #authenticate(authorization)
     status = await Tasks.get(task_id=task_id)
     return status
 
 
 @router.post("/conversation/{conversation_id}", summary="获取单个会话", response_model=ConversationOut)
-async def get_conversation(request: Request, conversation_id: str, authorization : str = Form()):
+async def get_conversation(request: Request, conversation_id: str, #authorization : str = Form()):
+                           current_user: User = Depends(get_current_active_user)
+):
     # 验证授权
-    authenticate(authorization)
+    #await authenticate(authorization)
     # 获取会话并预加载相关的任务
     conver = await Conversations.get(conversation_id=conversation_id).prefetch_related("tasks")
     return conver
 
 @router.post("/conversation_all/{user_id}", summary="获取全部会话")
-async def get_all_conversations(request: Request, user_id: str, authorization : str = Form()):
+async def get_all_conversations(request: Request, #user_id: str, authorization : str = Form()):
+                                current_user: User = Depends(get_current_active_user)
+):
     # 验证授权
-    await authenticate(authorization)
-    conversations = await Conversations.filter(user_id=user_id).all()
+    #await authenticate(authorization)
+    conversations = await Conversations.filter(user_id=current_user.user_id).all()
     return conversations

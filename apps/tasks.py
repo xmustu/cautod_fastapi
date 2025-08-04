@@ -20,7 +20,7 @@ router = APIRouter(
 class TaskCreateRequest(BaseModel):
     """创建新任务的请求体模型"""
     conversation_id: str = Field(..., description="任务所属的对话ID")
-    task_type: str = Field(..., description="任务类型 (e.g., 'geometry', 'part_retrieval')")
+    task_type: str = Field(..., description="任务类型 (e.g., 'geometry', 'retrieval')")
     details: Optional[Dict[str, Any]] = Field(None, description="与任务相关的附加信息")
 
 class TaskCreateResponse(BaseModel):
@@ -153,7 +153,8 @@ async def execute_task(
         "role": "assistant",
     }
     # 更新任务状态为“处理中”
-    task.status = "processing"
+    #task.status = "processing"
+    task.status = "running"
     await task.save()
 
     # 根据任务类型路由到不同的处理逻辑
@@ -207,7 +208,7 @@ async def execute_task(
                 )
 
                 # 任务成功完成，更新状态
-                task.status = "completed"
+                task.status = "done"
                 await task.save()
 
             except Exception as e:
@@ -222,7 +223,7 @@ async def execute_task(
 
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
-    elif request.task_type == "part_retrieval":
+    elif request.task_type == "retrieval":
         # TODO: 在这里实现零件检索的逻辑
 
         #模拟保存生成的消息到数据库, 仅使用示例
@@ -244,11 +245,11 @@ async def execute_task(
                 )
         
         # 任务成功完成，更新状态
-        task.status = "completed"
+        task.status = "done"
         await task.save()
         return {"message": "Part retrieval completed", "parts": []}
         
-    elif request.task_type == "design_optimization":
+    elif request.task_type == "optimize":
         # TODO: 在这里实现设计优化的逻辑
 
         #模拟保存生成的消息到数据库, 仅使用示例
@@ -270,7 +271,7 @@ async def execute_task(
                 )
         
         # 任务成功完成，更新状态
-        task.status = "completed"
+        task.status = "done"
         await task.save()
         return {"message": "Design optimization completed", "results": {}}
 

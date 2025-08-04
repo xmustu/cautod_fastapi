@@ -131,6 +131,7 @@ Authorization: Bearer <your_jwt_token>
 **注意**: `GET /conversation_all` 接口（用于获取所有对话列表）应继续保持不变，前端依赖此接口来渲染侧边栏和历史页面的顶层列表。
 
 
+
 ## 3.对话管理
 ## 概述
 
@@ -139,7 +140,7 @@ Authorization: Bearer <your_jwt_token>
 ## 基础信息
 
 - **基础路径**：接口的基础路径由路由配置决定
-- **认证方式**：通过`get_current_active_user`依赖项进行用户认证（代码中已引入但部分接口暂未应用）
+- **认证方式**：通过`get_current_active_user`依赖项进行用户认证（
 - **数据存储**：使用Redis存储对话消息和用户任务信息
 - **响应格式**：除流式响应外，均返回JSON格式数据
 
@@ -185,7 +186,6 @@ Authorization: Bearer <your_jwt_token>
 - **摘要**：获取任务的对话历史
 - **描述**：根据用户ID和任务ID获取该任务下的所有对话历史记录
 - **请求参数**：
-  - `user_id`（必填）：用户ID，字符串类型
   - `task_id`（必填）：任务ID，字符串类型
 - **响应示例**：
   ```json
@@ -217,7 +217,7 @@ Authorization: Bearer <your_jwt_token>
 - **摘要**：获取用户对话历史记录
 - **描述**：根据用户ID获取该用户的所有任务列表及最后一条消息信息
 - **请求参数**：
-  - `user_id`（必填）：用户ID，字符串类型
+  - 无
 - **响应示例**：
   ```json
   {
@@ -246,7 +246,7 @@ Authorization: Bearer <your_jwt_token>
 - **路径参数**：
   - `task_id`：任务ID，字符串类型
 - **请求参数**：
-  - `user_id`（必填）：用户ID，字符串类型
+    - 无
 - **响应示例**：
   ```json
   {
@@ -268,7 +268,7 @@ Authorization: Bearer <your_jwt_token>
 - **路径参数**：
   - `task_id`：任务ID，字符串类型
 - **请求参数**：
-  - `user_id`（必填）：用户ID，字符串类型
+  - 无
 - **响应示例**：无响应体
 - **状态码**：
   - 200：成功
