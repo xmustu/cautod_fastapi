@@ -247,7 +247,7 @@ async def delete_task(
         else:
             raise NotImplementedError
         
-        return {"message": "任务历史已清除", "task_id": task_id, "user_id": user_id}
+        return {"message": "任务历史已清除", "task_id": task_id, "user_id": current_user.user_id}
     except Exception as e:
 
         raise HTTPException(status_code=500, detail="删除会话失败")
@@ -264,22 +264,33 @@ async def clear_task_history(
     """清除指定任务的对话历史，但保留任务记录"""
     try:
         if settings.REDIS_AVAILABLE and redis_client:
-            # 从Redis删除对话历史
-            message_key = get_message_key(current_user.user_id, task_id)
+            user_task_key = get_user_task_key(current_user.user_id)
+            
+            # 1. 获取现有的任务信息
+            existing_task_info_str = await redis_client.hget(user_task_key, task_id)
+            if not existing_task_info_str:
+                raise HTTPException(status_code=404, detail="任务未找到")
 
-            #删除对话历史
+            # 2. 从Redis删除对话历史
+            message_key = get_message_key(current_user.user_id, task_id)
             await redis_client.delete(message_key)
 
-            # 更新任务信息， 保留任务单清空最后消息
-            user_task_key = get_user_task_key(current_user.user_id)
-            task_info = {
-                "task_id": task_id,
-                "last_message": "",
-                "last_timestamp": time.time()
-            }
-            await redis_client.hset(user_task_key, task_id, json.dumps(task_info))
+            # 3. 更新任务信息
+            task_data = json.loads(existing_task_info_str)
+            task_data["last_message"] = "对话历史已清除"
+            task_data["last_timestamp"] = time()
+
+            # 4. 将更新后的信息存回
+            await redis_client.hset(user_task_key, task_id, json.dumps(task_data))
         else:
             raise NotImplementedError
+        
+        return {"message": "对话历史已清除", "task_id": task_id, "user_id": current_user.user_id}
 
     except Exception as e:
-          raise HTTPException(status_code=500, detail="清除对话历史失败")
+        # 检查是否是自己抛出的HTTPException，如果是，则重新抛出
+        if isinstance(e, HTTPException):
+            raise e
+        # 对于其他未知异常，记录日志并返回通用错误
+        print(f"清除对话历史时发生未知错误: {e}")
+        raise HTTPException(status_code=500, detail="清除对话历史失败")

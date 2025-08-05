@@ -56,7 +56,7 @@ app.add_middleware(
 
 register_tortoise(
     app,
-    config=TORTOISE_ORM_mysql,  # 使用 MySQL 配置
+    config=TORTOISE_ORM_sqlite,  # 使用 MySQL 配置
     generate_schemas=True,  # 在应用启动时自动创建数据库表
     add_exception_handlers=True,
 )
