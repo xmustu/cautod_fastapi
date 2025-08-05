@@ -38,7 +38,7 @@ def get_user_task_key(user_id: str) -> str:
 
 
 # 保存对话消息
-async def save_message_to_redis(user_id: str, task_id: str, task_type: str, message:Message, redis_client:aioredis.Redis):
+async def save_message_to_redis(user_id: str, task_id: str, task_type: str, conversation_id: str, message:Message, redis_client:aioredis.Redis):
     try:
         print("看看Message: ", message)
         print("role: ", message.role)
@@ -66,6 +66,7 @@ async def save_message_to_redis(user_id: str, task_id: str, task_type: str, mess
             task_info = {
                 "task_id": task_id,
                 "task_type": task_type,
+                "conversation_id": conversation_id, # 新增
                 "last_message": message.content, # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
                 "last_timestamp": message.timestamp.timestamp()
             }
@@ -207,6 +208,7 @@ async def get_user_history(
 
                 history.append({
                     "task_id": task_id,
+                    "conversation_id": task_data.get("conversation_id"), # 新增
                     "task_type": task_data.get("task_type", "未知类型"),
                     "last_message": display_message,
                     "last_timestamp": task_data.get("last_timestamp", ""),
