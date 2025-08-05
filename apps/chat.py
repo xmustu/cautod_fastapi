@@ -38,16 +38,16 @@ def get_user_task_key(user_id: str) -> str:
 
 
 # 保存对话消息
-async def save_message_to_redis(user_id: str, task_id: str, message:Message, redis_client:aioredis.Redis):
+async def save_message_to_redis(user_id: str, task_id: str, task_type: str, message:Message, redis_client:aioredis.Redis):
     try:
         print("看看Message: ", message)
-        print("role: ", message["role"])
-        print("content: ", message["content"])
-        print("created_at: ", message["created_at"])
+        print("role: ", message.role)
+        print("content: ", message.content)
+        print("timestamp: ", message.timestamp)
         message_data = {
-            "role": message["role"],
-            "content": message["content"],
-            "timestamp": message["created_at"],
+            "role": message.role,
+            "content": message.content,
+            "timestamp": message.timestamp.timestamp(),
 
         }
         if settings.REDIS_AVAILABLE and redis_client:
@@ -65,8 +65,9 @@ async def save_message_to_redis(user_id: str, task_id: str, message:Message, red
             user_task_key = get_user_task_key(user_id)
             task_info = {
                 "task_id": task_id,
-                "last_message": message["content"], # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
-                "last_timestamp": message["created_at"]
+                "task_type": task_type,
+                "last_message": message.content, # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
+                "last_timestamp": message.timestamp.timestamp()
             }
             await redis_client.hset(user_task_key, task_id, json.dumps(task_info))
         else:
@@ -110,7 +111,7 @@ async def generate_stream_respone(
                 yield json.dumps(SSETextChunk(
                     role=message["role"],
                     content=message["content"],
-                    timestamp=message["created_at"]
+                    timestamp=message["timestamp"]
                 )) + "\n"
                 
                 # 保存消息到Redis
@@ -182,9 +183,32 @@ async def get_user_history(
 
             for task_id, task_info in tasks_data.items():
                 task_data =  json.loads(task_info)
+                
+                last_message_str = task_data.get("last_message", "")
+                display_message = last_message_str
+                
+                # 尝试解析 last_message，如果它是 JSON 并且包含 answer 字段，则只显示 answer
+                try:
+                    # 首先，尝试将字符串中的事件部分（如 'event: message_end\ndata: '）去掉
+                    if last_message_str.startswith('event: message_end'):
+                        # 提取 JSON 部分
+                        json_str = last_message_str.split('data: ', 1)[1].strip()
+                        message_content = json.loads(json_str)
+                        if 'answer' in message_content:
+                            display_message = message_content['answer']
+                    else:
+                        # 如果不是 SSE 格式，也尝试直接解析
+                        message_content = json.loads(last_message_str)
+                        if 'answer' in message_content:
+                            display_message = message_content['answer']
+                except (json.JSONDecodeError, IndexError, TypeError):
+                    # 如果解析失败或格式不符，则保持原始消息
+                    display_message = last_message_str
+
                 history.append({
                     "task_id": task_id,
-                    "last_message": task_data.get("last_message", ""),
+                    "task_type": task_data.get("task_type", "未知类型"),
+                    "last_message": display_message,
                     "last_timestamp": task_data.get("last_timestamp", ""),
                     "last_time": datetime.fromtimestamp(task_data["last_timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
                 })

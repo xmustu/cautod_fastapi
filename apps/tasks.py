@@ -105,7 +105,7 @@ async def create_task(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found or does not belong to the current user."
         )
-
+    
     # 创建任务实例
     new_task = await Tasks.create(
         conversation_id=task_data.conversation_id,
@@ -114,15 +114,14 @@ async def create_task(
         status="pending" # 初始状态
         # 'details' 字段在 Tasks 模型中不存在，因此不直接保存
     )
-
+    
     # 存储对话的用户信息到redis
-    #message = Message("user", task_data.details.get("query", ""), datetime.now())
-    message = {
-       "role": "user",
-        "content": task_data.details.get("query"),
-        "created_at": datetime.now().isoformat(),
-    }
-    await save_message_to_redis(user_id=current_user.user_id, task_id=new_task.task_id, message=message, redis_client=redis_client)
+    message = Message(
+        role="user",
+        content=task_data.details.get("query", ""),
+        timestamp=datetime.now()
+    )
+    await save_message_to_redis(user_id=current_user.user_id, task_id=new_task.task_id, task_type=task_data.task_type, message=message, redis_client=redis_client)
 
     return new_task
 
@@ -156,7 +155,7 @@ async def execute_task(
     #task.status = "processing"
     task.status = "running"
     await task.save()
-
+    
     # 根据任务类型路由到不同的处理逻辑
     if request.task_type == "geometry":
         # --- 从 app02.py 移植过来的几何建模逻辑 ---
@@ -193,16 +192,16 @@ async def execute_task(
                 # 3. 模拟保存生成的消息到数据库
                 assistant_message["content"] = sse_final
                 # 保存助手消息到Redis
-                #message = Message("assistant", assistant_message["content"], datetime.now())
-                message = {
-                            "role": "assistant",
-                            "content": assistant_message["content"],
-                            "created_at": datetime.now().isoformat(),
-                }
+                message = Message(
+                    role="assistant",
+                    content=assistant_message["content"],
+                    timestamp=datetime.now()
+                )
                 print("结果回复信息: ", message)
                 await save_message_to_redis(
-                    user_id=current_user.user_id, 
-                    task_id=request.task_id, 
+                    user_id=current_user.user_id,
+                    task_id=request.task_id,
+                    task_type=request.task_type,
                     message=message,
                     redis_client=redis_client
                 )
@@ -225,21 +224,19 @@ async def execute_task(
 
     elif request.task_type == "retrieval":
         # TODO: 在这里实现零件检索的逻辑
-
         #模拟保存生成的消息到数据库, 仅使用示例
         assistant_message["content"] = "Part retrieval completed!\n See:"
         # 保存助手消息到Redis
-        #assistant_message["created_at"] = datetime.now().isoformat()
-        #message = Message("assistant", assistant_message["content"], datetime.now())
-        message = {
-                            "role": "assistant",
-                            "content": assistant_message["content"],
-                            "created_at": datetime.now().isoformat(),
-                }
+        message = Message(
+            role="assistant",
+            content=assistant_message["content"],
+            timestamp=datetime.now()
+        )
         print("结果回复信息: ", message)
         await save_message_to_redis(
-                    user_id=current_user.user_id, 
-                    task_id=request.task_id, 
+                    user_id=current_user.user_id,
+                    task_id=request.task_id,
+                    task_type=request.task_type,
                     message=message,
                     redis_client=redis_client
                 )
@@ -255,17 +252,16 @@ async def execute_task(
         #模拟保存生成的消息到数据库, 仅使用示例
         assistant_message["content"] = "Design optimization completed!\n See:"
         # 保存助手消息到Redis
-        #assistant_message["created_at"] = datetime.now().isoformat()
-        #message = Message("assistant", assistant_message["content"], datetime.now())
-        message = {
-                            "role": "assistant",
-                            "content": assistant_message["content"],
-                            "created_at": datetime.now().isoformat(),
-                }
+        message = Message(
+            role="assistant",
+            content=assistant_message["content"],
+            timestamp=datetime.now()
+        )
         print("结果回复信息: ", message)
         await save_message_to_redis(
-                    user_id=current_user.user_id, 
-                    task_id=request.task_id, 
+                    user_id=current_user.user_id,
+                    task_id=request.task_id,
+                    task_type=request.task_type,
                     message=message,
                     redis_client=redis_client
                 )
@@ -280,17 +276,16 @@ async def execute_task(
         #模拟保存生成的消息到数据库, 仅使用示例
         assistant_message["content"] = "Unknown task type. Please check your request."
         # 保存助手消息到Redis
-        #assistant_message["created_at"] = datetime.now().isoformat()
-        #message = Message("assistant", assistant_message["content"], datetime.now())
-        message = {
-                            "role": "assistant",
-                            "content": assistant_message["content"],
-                            "created_at": datetime.now().isoformat(),
-                }
+        message = Message(
+            role="assistant",
+            content=assistant_message["content"],
+            timestamp=datetime.now()
+        )
         print("结果回复信息: ", message)
         await save_message_to_redis(
-                    user_id=current_user.user_id, 
-                    task_id=request.task_id, 
+                    user_id=current_user.user_id,
+                    task_id=request.task_id,
+                    task_type=request.task_type,
                     message=message,
                     redis_client=redis_client
                 )
@@ -301,6 +296,3 @@ async def execute_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown task type: {request.task_type}"
         )
-    
-   
-
