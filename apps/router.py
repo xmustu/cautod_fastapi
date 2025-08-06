@@ -53,32 +53,64 @@ async def upload_file(*,
             "content_type": file.content_type,
             "path": file_local
     }
-    
-    
+import os
+import mimetypes
 
-@router.post("/download_file/{file_name}", summary="下载文件")
+@router.get("/download_file/{file_name:path}", summary="下载文件")
 async def download_file(
-                  file_name: str,
-                  #authorization : str = Form(),
-                  current_user: User = Depends(get_current_active_user),
-                  path: Optional[str] = None):
-
-    # 验证授权
-    #authenticate(authorization)
-
+    file_name: str,
+    current_user: User = Depends(get_current_active_user)
+):
     """
-    raise NotimpltedError
-
-    验证文件所有权， 待实施
-
+    从服务器安全地下载文件。
+    - file_name: 要下载的文件的名称或相对路径。
     """
+    try:
+        # --- 健壮的路径计算 ---
+        # 获取当前文件(router.py)所在的目录
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        # 从 'apps' 目录上升到项目根目录
+        project_root = os.path.dirname(current_file_dir)
+        # 安全地拼接 'files' 目录
+        base_dir = os.path.join(project_root, "files")
+        
+        # 构建安全的文件路径，防止目录遍历攻击
+        safe_path = os.path.abspath(os.path.join(base_dir, file_name))
 
+        if not safe_path.startswith(base_dir):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="禁止访问非授权目录。"
+            )
 
-    if path == None:
-        path = "files"
-    return FileResponse(f"{path}/{file_name}")
-    
-    
+        if not os.path.isfile(safe_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="文件未找到。"
+            )
+            
+        # 提取纯文件名用于响应头
+        response_file_name = os.path.basename(safe_path)
+        
+        # 动态推断 MIME 类型
+        media_type, _ = mimetypes.guess_type(safe_path)
+        print(f"Guessed MIME type for {file_name}: {media_type}") # Debug log
+        if media_type is None:
+            media_type = 'application/octet-stream' # 如果无法推断，则使用默认值
+
+        return FileResponse(
+            path=safe_path,
+            filename=response_file_name,
+            media_type=media_type
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"下载文件时发生错误: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="服务器内部错误。"
+        )
 
 # 获取任务状态接口
 @router.post(

@@ -197,9 +197,9 @@ async def execute_task(
                 final_response_data = SSEResponse(
                     answer=full_answer,
                     metadata=GenerationMetadata(
-                        cad_file="https://example.com/generated_model.step",
-                        code_file="https://example.com/parametric_model.py",
-                        preview_image="https://example.com/preview_image.png"
+                        cad_file="model.step",
+                        code_file="script.py",
+                        preview_image="yuanbao.png"
                     )
                 )
                 
@@ -317,9 +317,9 @@ async def execute_task(
                     answer=full_answer,
                     metadata=GenerationMetadata(
                         # 提供所有必需的字段，并确保格式正确
-                        cad_file="https://example.com/optimized_model.step",
-                        code_file="https://example.com/optimization_script.py",
-                        preview_image="https://user-images.githubusercontent.com/12345/1000_2000_01.png" # 主预览图
+                        cad_file="model.step",
+                        code_file="script.py",
+                        preview_image="preview.png"
                     )
                 )
                 
