@@ -23,9 +23,11 @@ router = APIRouter(
 settings = Settings()
 
 class Message(BaseModel):
-    role: str        # 谁说的话："user"(用户) 或 "assistant"(AI)    
-    content: str     # 具体的对话内容
-    timestamp: datetime   # 消息的时间戳，默认为当前时间
+    role: str
+    content: str
+    timestamp: datetime
+    metadata: Optional[Dict[str, Any]] = None
+    parts: Optional[List[Dict[str, Any]]] = None
 
 
 def get_message_key(user_id: str, task_id: str) -> str:
@@ -48,7 +50,8 @@ async def save_message_to_redis(user_id: str, task_id: str, task_type: str, conv
             "role": message.role,
             "content": message.content,
             "timestamp": message.timestamp.timestamp(),
-
+            "metadata": message.metadata,
+            "parts": message.parts,
         }
         if settings.REDIS_AVAILABLE and redis_client:
             #键名
