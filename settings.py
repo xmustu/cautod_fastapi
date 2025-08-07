@@ -24,7 +24,8 @@ TORTOISE_ORM_mysql = {
             # 'engine': 'tortoise.backends.asyncpg',  PostgreSQL
             'engine': 'tortoise.backends.mysql',  # MySQL or Mariadb
             'credentials': {
-                'host': "240e:3bc:266:b4d0:8ed2:275a:f1a9:7b4d",#'cautod.ssvgg.asia',
+                # 'host': "240e:3bc:266:b4d0:8ed2:275a:f1a9:7b4d",#'cautod.ssvgg.asia',
+                'host': "240e:3bc:266:b4d0:8ed2:275a:f1a9:7b4d",
                 'port': '3306',
                 'user': 'lwx',
                 'password':'i4AIi4AI',

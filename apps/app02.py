@@ -89,6 +89,19 @@ class SSEResponse(BaseModel):
     answer: str  #输出描述文本
     metadata: GenerationMetadata
 
+# --- 新增：用于零件检索的SSE模型 ---
+class PartData(BaseModel):
+    """单个零件的数据模型"""
+    id: int
+    name: str
+    imageUrl: str
+    fileName: str
+
+class SSEPartChunk(BaseModel):
+    """用于通过SSE流式传输零件数据的模型"""
+    event: str = "part_chunk"
+    part: PartData
+
 
 # 创建新会话的接口
 @geometry.post("/conversation", response_model=ConversationResponse)

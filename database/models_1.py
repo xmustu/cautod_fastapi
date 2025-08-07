@@ -44,7 +44,7 @@ class Tasks(Model):
         "models.Conversations", related_name="tasks", to_field="conversation_id"
     )
     user_id = fields.IntField()
-    task_type = fields.CharField(max_length=50)  # 'geometry', 'part_retrieval', 'design_optimization'
+    task_type = fields.CharField(max_length=50)  # 'geometry', 'retrieval', 'optimize'
     status = fields.CharField(max_length=20, default="pending")
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)

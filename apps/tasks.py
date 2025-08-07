@@ -8,7 +8,7 @@ from datetime import datetime
 
 from core.authentication import get_current_active_user, User
 from database.models_1 import Tasks, Conversations
-from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem
+from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem, PartData, SSEPartChunk
 from apps.chat import save_message_to_redis, Message
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
@@ -105,7 +105,7 @@ async def create_task(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found or does not belong to the current user."
         )
-
+    
     # 创建任务实例
     new_task = await Tasks.create(
         conversation_id=task_data.conversation_id,
@@ -114,15 +114,14 @@ async def create_task(
         status="pending" # 初始状态
         # 'details' 字段在 Tasks 模型中不存在，因此不直接保存
     )
-
-    # 存储对话的用户信息到redis
-    #message = Message("user", task_data.details.get("query", ""), datetime.now())
-    message = {
-       "role": "user",
-        "content": task_data.details.get("query"),
-        "created_at": datetime.now().isoformat(),
-    }
-    await save_message_to_redis(user_id=current_user.user_id, task_id=new_task.task_id, message=message, redis_client=redis_client)
+    
+    # 移除在此处保存消息的逻辑，该职责已转移到前端
+    # message = Message(
+    #     role="user",
+    #     content=task_data.details.get("query", ""),
+    #     timestamp=datetime.now()
+    # )
+    # await save_message_to_redis(user_id=current_user.user_id, task_id=new_task.task_id, task_type=task_data.task_type, message=message, redis_client=redis_client)
 
     return new_task
 
@@ -149,6 +148,23 @@ async def execute_task(
             detail="Task not found or does not belong to the current user/conversation."
         )
 
+    # --- 新增：在执行任务前，保存用户的消息 ---
+    if request.query:
+        user_message = Message(
+            role="user",
+            content=request.query,
+            timestamp=datetime.now()
+        )
+        await save_message_to_redis(
+            user_id=current_user.user_id,
+            task_id=request.task_id,
+            task_type=request.task_type,
+            conversation_id=request.conversation_id,
+            message=user_message,
+            redis_client=redis_client
+        )
+    # --- 修改结束 ---
+
     assistant_message = {
         "role": "assistant",
     }
@@ -156,7 +172,7 @@ async def execute_task(
     #task.status = "processing"
     task.status = "running"
     await task.save()
-
+    
     # 根据任务类型路由到不同的处理逻辑
     if request.task_type == "geometry":
         # --- 从 app02.py 移植过来的几何建模逻辑 ---
@@ -181,28 +197,27 @@ async def execute_task(
                 final_response_data = SSEResponse(
                     answer=full_answer,
                     metadata=GenerationMetadata(
-                        cad_file="https://example.com/generated_model.step",
-                        code_file="https://example.com/parametric_model.py",
-                        preview_image="https://example.com/preview_image.png"
+                        cad_file="model.step",
+                        code_file="script.py",
+                        preview_image="yuanbao.png"
                     )
                 )
                 
                 sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
                 yield sse_final
 
-                # 3. 模拟保存生成的消息到数据库
-                assistant_message["content"] = sse_final
-                # 保存助手消息到Redis
-                #message = Message("assistant", assistant_message["content"], datetime.now())
-                message = {
-                            "role": "assistant",
-                            "content": assistant_message["content"],
-                            "created_at": datetime.now().isoformat(),
-                }
-                print("结果回复信息: ", message)
+                # 3. 保存结构化的助手消息到Redis
+                message = Message(
+                    role="assistant",
+                    content=full_answer,
+                    metadata=final_response_data.metadata.model_dump(),
+                    timestamp=datetime.now()
+                )
                 await save_message_to_redis(
-                    user_id=current_user.user_id, 
-                    task_id=request.task_id, 
+                    user_id=current_user.user_id,
+                    task_id=request.task_id,
+                    task_type=request.task_type,
+                    conversation_id=request.conversation_id,
                     message=message,
                     redis_client=redis_client
                 )
@@ -224,73 +239,137 @@ async def execute_task(
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     elif request.task_type == "retrieval":
-        # TODO: 在这里实现零件检索的逻辑
+        async def stream_generator():
+            try:
+                # 1. 发送会话和任务信息
+                conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
+                yield f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
 
-        #模拟保存生成的消息到数据库, 仅使用示例
-        assistant_message["content"] = "Part retrieval completed!\n See:"
-        # 保存助手消息到Redis
-        #assistant_message["created_at"] = datetime.now().isoformat()
-        #message = Message("assistant", assistant_message["content"], datetime.now())
-        message = {
-                            "role": "assistant",
-                            "content": assistant_message["content"],
-                            "created_at": datetime.now().isoformat(),
-                }
-        print("结果回复信息: ", message)
-        await save_message_to_redis(
-                    user_id=current_user.user_id, 
-                    task_id=request.task_id, 
-                    message=message,
+                # 2. 发送初始文本块
+                initial_text = "Part retrieval completed! See:"
+                text_chunk_data = SSETextChunk(text=initial_text)
+                yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                
+                # 3. 模拟并流式发送零件数据
+                mock_parts = [
+                    PartData(id=1, name="高强度齿轮", imageUrl="https://images.unsplash.com/photo-1559496447-8c6f7879e879?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D", fileName="gear_model_v1.step"),
+                    PartData(id=2, name="轻量化支架", imageUrl="https://images.unsplash.com/photo-1620756243474-450c37a58759?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D", fileName="bracket_lite_v3.stl"),
+                    PartData(id=3, name="耐磨轴承", imageUrl="https://images.unsplash.com/photo-1506794778202-b6f7a14994d6?q=80&w=2592&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D", fileName="bearing_wear_resistant.iges")
+                ]
+
+                for part_data in mock_parts:
+                    part_chunk_data = SSEPartChunk(part=part_data)
+                    yield f'event: part_chunk\ndata: {part_chunk_data.model_dump_json()}\n\n'
+                    await asyncio.sleep(0.1) # 模拟网络延迟
+
+                # 4. 发送结束信号 (这里我们发送一个简单的结束事件)
+                yield 'event: message_end\ndata: {"status": "completed"}\n\n'
+
+                # 5. 保存包含所有零件的最终消息
+                final_parts_message = Message(
+                    role="assistant",
+                    content=initial_text,
+                    parts=[part.model_dump() for part in mock_parts],
+                    timestamp=datetime.now()
+                )
+                await save_message_to_redis(
+                    user_id=current_user.user_id,
+                    task_id=request.task_id,
+                    task_type=request.task_type,
+                    conversation_id=request.conversation_id,
+                    message=final_parts_message,
                     redis_client=redis_client
                 )
+
+                # 任务成功完成，更新状态
+                task.status = "done"
+                await task.save()
+
+            except Exception as e:
+                task.status = "failed"
+                await task.save()
+                print(f"Error during retrieval task execution: {e}")
+                error_data = json.dumps({"error": "An error occurred during task execution."})
+                yield f'event: error\ndata: {error_data}\n\n'
         
-        # 任务成功完成，更新状态
-        task.status = "done"
-        await task.save()
-        return {"message": "Part retrieval completed", "parts": []}
-        
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
     elif request.task_type == "optimize":
-        # TODO: 在这里实现设计优化的逻辑
+        async def stream_generator():
+            try:
+                # 首先发送会话和任务信息
+                conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
+                sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
+                yield sse_conv_info
 
-        #模拟保存生成的消息到数据库, 仅使用示例
-        assistant_message["content"] = "Design optimization completed!\n See:"
-        # 保存助手消息到Redis
-        #assistant_message["created_at"] = datetime.now().isoformat()
-        #message = Message("assistant", assistant_message["content"], datetime.now())
-        message = {
-                            "role": "assistant",
-                            "content": assistant_message["content"],
-                            "created_at": datetime.now().isoformat(),
-                }
-        print("结果回复信息: ", message)
-        await save_message_to_redis(
-                    user_id=current_user.user_id, 
-                    task_id=request.task_id, 
+                full_answer = "已完成机械臂的轻量化设计。根据要求，在满足材料屈服强度为250MPa、安全系数为2（许用应力125MPa）的约束下，我们对机械臂进行了拓扑优化。最终，机械臂质量显著降低，且最大应力点满足安全要求。优化过程的收敛曲线图如下所示。"
+                
+                # 1. 模拟流式发送文本块
+                for i in range(0, len(full_answer), 5):
+                    chunk = full_answer[i:i+5]
+                    text_chunk_data = SSETextChunk(text=chunk)
+                    sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                    yield sse_chunk
+                    await asyncio.sleep(0.05)
+
+                # 2. 发送包含完整元数据的结束消息
+                final_response_data = SSEResponse(
+                    answer=full_answer,
+                    metadata=GenerationMetadata(
+                        # 提供所有必需的字段，并确保格式正确
+                        cad_file="model.step",
+                        code_file="script.py",
+                        preview_image="preview.png"
+                    )
+                )
+                
+                sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
+                yield sse_final
+
+                # 3. 保存结构化的助手消息到Redis
+                message = Message(
+                    role="assistant",
+                    content=full_answer,
+                    metadata=final_response_data.metadata.model_dump(),
+                    timestamp=datetime.now()
+                )
+                await save_message_to_redis(
+                    user_id=current_user.user_id,
+                    task_id=request.task_id,
+                    task_type=request.task_type,
+                    conversation_id=request.conversation_id,
                     message=message,
                     redis_client=redis_client
                 )
-        
-        # 任务成功完成，更新状态
-        task.status = "done"
-        await task.save()
-        return {"message": "Design optimization completed", "results": {}}
+
+                # 任务成功完成，更新状态
+                task.status = "done"
+                await task.save()
+
+            except Exception as e:
+                task.status = "failed"
+                await task.save()
+                print(f"Error during optimization task execution: {e}")
+                error_data = json.dumps({"error": "An error occurred during task execution."})
+                yield f'event: error\ndata: {error_data}\n\n'
+
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     else:
-
         #模拟保存生成的消息到数据库, 仅使用示例
         assistant_message["content"] = "Unknown task type. Please check your request."
         # 保存助手消息到Redis
-        #assistant_message["created_at"] = datetime.now().isoformat()
-        #message = Message("assistant", assistant_message["content"], datetime.now())
-        message = {
-                            "role": "assistant",
-                            "content": assistant_message["content"],
-                            "created_at": datetime.now().isoformat(),
-                }
+        message = Message(
+            role="assistant",
+            content=assistant_message["content"],
+            timestamp=datetime.now()
+        )
         print("结果回复信息: ", message)
         await save_message_to_redis(
-                    user_id=current_user.user_id, 
-                    task_id=request.task_id, 
+                    user_id=current_user.user_id,
+                    task_id=request.task_id,
+                    task_type=request.task_type,
+                    conversation_id=request.conversation_id,
                     message=message,
                     redis_client=redis_client
                 )
@@ -301,6 +380,3 @@ async def execute_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown task type: {request.task_type}"
         )
-    
-   
-

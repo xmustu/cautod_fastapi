@@ -23,9 +23,11 @@ router = APIRouter(
 settings = Settings()
 
 class Message(BaseModel):
-    role: str        # 谁说的话："user"(用户) 或 "assistant"(AI)    
-    content: str     # 具体的对话内容
-    timestamp: datetime   # 消息的时间戳，默认为当前时间
+    role: str
+    content: str
+    timestamp: datetime
+    metadata: Optional[Dict[str, Any]] = None
+    parts: Optional[List[Dict[str, Any]]] = None
 
 
 def get_message_key(user_id: str, task_id: str) -> str:
@@ -38,17 +40,18 @@ def get_user_task_key(user_id: str) -> str:
 
 
 # 保存对话消息
-async def save_message_to_redis(user_id: str, task_id: str, message:Message, redis_client:aioredis.Redis):
+async def save_message_to_redis(user_id: str, task_id: str, task_type: str, conversation_id: str, message:Message, redis_client:aioredis.Redis):
     try:
         print("看看Message: ", message)
-        print("role: ", message["role"])
-        print("content: ", message["content"])
-        print("created_at: ", message["created_at"])
+        print("role: ", message.role)
+        print("content: ", message.content)
+        print("timestamp: ", message.timestamp)
         message_data = {
-            "role": message["role"],
-            "content": message["content"],
-            "timestamp": message["created_at"],
-
+            "role": message.role,
+            "content": message.content,
+            "timestamp": message.timestamp.timestamp(),
+            "metadata": message.metadata,
+            "parts": message.parts,
         }
         if settings.REDIS_AVAILABLE and redis_client:
             #键名
@@ -65,8 +68,10 @@ async def save_message_to_redis(user_id: str, task_id: str, message:Message, red
             user_task_key = get_user_task_key(user_id)
             task_info = {
                 "task_id": task_id,
-                "last_message": message["content"], # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
-                "last_timestamp": message["created_at"]
+                "task_type": task_type,
+                "conversation_id": conversation_id, # 新增
+                "last_message": message.content, # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
+                "last_timestamp": message.timestamp.timestamp()
             }
             await redis_client.hset(user_task_key, task_id, json.dumps(task_info))
         else:
@@ -110,7 +115,7 @@ async def generate_stream_respone(
                 yield json.dumps(SSETextChunk(
                     role=message["role"],
                     content=message["content"],
-                    timestamp=message["created_at"]
+                    timestamp=message["timestamp"]
                 )) + "\n"
                 
                 # 保存消息到Redis
@@ -182,9 +187,33 @@ async def get_user_history(
 
             for task_id, task_info in tasks_data.items():
                 task_data =  json.loads(task_info)
+                
+                last_message_str = task_data.get("last_message", "")
+                display_message = last_message_str
+                
+                # 尝试解析 last_message，如果它是 JSON 并且包含 answer 字段，则只显示 answer
+                try:
+                    # 首先，尝试将字符串中的事件部分（如 'event: message_end\ndata: '）去掉
+                    if last_message_str.startswith('event: message_end'):
+                        # 提取 JSON 部分
+                        json_str = last_message_str.split('data: ', 1)[1].strip()
+                        message_content = json.loads(json_str)
+                        if 'answer' in message_content:
+                            display_message = message_content['answer']
+                    else:
+                        # 如果不是 SSE 格式，也尝试直接解析
+                        message_content = json.loads(last_message_str)
+                        if 'answer' in message_content:
+                            display_message = message_content['answer']
+                except (json.JSONDecodeError, IndexError, TypeError):
+                    # 如果解析失败或格式不符，则保持原始消息
+                    display_message = last_message_str
+
                 history.append({
                     "task_id": task_id,
-                    "last_message": task_data.get("last_message", ""),
+                    "conversation_id": task_data.get("conversation_id"), # 新增
+                    "task_type": task_data.get("task_type", "未知类型"),
+                    "last_message": display_message,
                     "last_timestamp": task_data.get("last_timestamp", ""),
                     "last_time": datetime.fromtimestamp(task_data["last_timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
                 })
@@ -221,7 +250,7 @@ async def delete_task(
         else:
             raise NotImplementedError
         
-        return {"message": "任务历史已清除", "task_id": task_id, "user_id": user_id}
+        return {"message": "任务历史已清除", "task_id": task_id, "user_id": current_user.user_id}
     except Exception as e:
 
         raise HTTPException(status_code=500, detail="删除会话失败")
@@ -238,22 +267,33 @@ async def clear_task_history(
     """清除指定任务的对话历史，但保留任务记录"""
     try:
         if settings.REDIS_AVAILABLE and redis_client:
-            # 从Redis删除对话历史
-            message_key = get_message_key(current_user.user_id, task_id)
+            user_task_key = get_user_task_key(current_user.user_id)
+            
+            # 1. 获取现有的任务信息
+            existing_task_info_str = await redis_client.hget(user_task_key, task_id)
+            if not existing_task_info_str:
+                raise HTTPException(status_code=404, detail="任务未找到")
 
-            #删除对话历史
+            # 2. 从Redis删除对话历史
+            message_key = get_message_key(current_user.user_id, task_id)
             await redis_client.delete(message_key)
 
-            # 更新任务信息， 保留任务单清空最后消息
-            user_task_key = get_user_task_key(current_user.user_id)
-            task_info = {
-                "task_id": task_id,
-                "last_message": "",
-                "last_timestamp": time.time()
-            }
-            await redis_client.hset(user_task_key, task_id, json.dumps(task_info))
+            # 3. 更新任务信息
+            task_data = json.loads(existing_task_info_str)
+            task_data["last_message"] = "对话历史已清除"
+            task_data["last_timestamp"] = time()
+
+            # 4. 将更新后的信息存回
+            await redis_client.hset(user_task_key, task_id, json.dumps(task_data))
         else:
             raise NotImplementedError
+        
+        return {"message": "对话历史已清除", "task_id": task_id, "user_id": current_user.user_id}
 
     except Exception as e:
-          raise HTTPException(status_code=500, detail="清除对话历史失败")
+        # 检查是否是自己抛出的HTTPException，如果是，则重新抛出
+        if isinstance(e, HTTPException):
+            raise e
+        # 对于其他未知异常，记录日志并返回通用错误
+        print(f"清除对话历史时发生未知错误: {e}")
+        raise HTTPException(status_code=500, detail="清除对话历史失败")
