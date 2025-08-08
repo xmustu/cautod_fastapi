@@ -14,23 +14,36 @@ from tortoise.contrib.fastapi import register_tortoise
 from settings import TORTOISE_ORM_sqlite, TORTOISE_ORM_mysql
 from contextlib import asynccontextmanager
 from database.redis import redis_connect
+from core.geometry import start_mcp, dify_api_port_forward
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行的事件
 
     #启动日志服务
+
     #连接数据库
     app.state.redis = await redis_connect()  # 连接到 Redis 数据库
     #获取动态配置
+
     #启用第三方的服务
+    #mcp_process = await start_mcp()
+    #print("执行过了吗")
+    dify_api_process = await dify_api_port_forward()
     #其他
     yield  
     # 终止时执行的事件
+
     #关闭日志服务
+
     #关闭数据库连接
-    app.state.redis.close()  # 关闭 Redis 连接
-    #推出第三方服务
+    await app.state.redis.close()  # 关闭 Redis 连接
+    #退出第三方服务
+    #print("stdout: ", mcp_process.stdout)
+    #print("stderr: ", mcp_process.stderr)
+    #mcp_process.terminate()
+    dify_api_process.terminate()
     #其他
     
 
@@ -61,6 +74,9 @@ register_tortoise(
     add_exception_handlers=True,
 )
 
+exclude_dirs = [
+    "files\mcp_out",
+]
 
 app.include_router(user, prefix="/api/user", tags=["用户部分", ])
 app.include_router(geometry, prefix="/api/geometry", tags=["几何建模", ])
@@ -70,4 +86,4 @@ app.include_router(router, prefix="/api", tags=["功能", ])
 app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
 
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="127.0.0.1", port=8080,  reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8080,  reload=True, reload_excludes=exclude_dirs)
