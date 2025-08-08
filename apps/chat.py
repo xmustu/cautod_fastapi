@@ -119,6 +119,7 @@ async def generate_stream_respone(
                 )) + "\n"
                 
                 # 保存消息到Redis
+                print("保存之前先看看message: ", message)
                 await save_message_to_redis(user_id, task_id, message, redis_client)
                 
                 # 模拟延时

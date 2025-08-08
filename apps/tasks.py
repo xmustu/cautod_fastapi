@@ -10,6 +10,9 @@ from core.authentication import get_current_active_user, User
 from database.models_1 import Tasks, Conversations
 from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem, PartData, SSEPartChunk
 from apps.chat import save_message_to_redis, Message
+from apps.app02 import geometry_dify_api
+import time 
+import uuid
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
     tags=["任务管理"]
@@ -172,7 +175,13 @@ async def execute_task(
     #task.status = "processing"
     task.status = "running"
     await task.save()
-    
+    # 时间戳采用秒级+3位随机数，避免同一秒内冲突
+    timestamp = f"{int(time.time())}_{uuid.uuid4().hex[:3]}"
+
+    file_name = f'{current_user.user_id}_{request.conversation_id}_{request.task_id}_{timestamp}'
+    combinde_query = request.query + f". 我希望生成的.py 和 .step 文件的命名为：{file_name}" 
+    # + r'\n请注意文件保存路径为"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\mcp_out"'
+    print("combinde_query: ", combinde_query)
     # 根据任务类型路由到不同的处理逻辑
     if request.task_type == "geometry":
         # --- 从 app02.py 移植过来的几何建模逻辑 ---
@@ -183,9 +192,12 @@ async def execute_task(
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
 
-                full_answer = "已根据您的需求生成带孔矩形零件，尺寸符合设计要求。"
-                
+                # 前端测试案例
                 # 1. 模拟流式发送文本块
+                full_answer = ""
+                FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\test_example.txt"
+                with open(FILE_PATH, "rb") as f:
+                    full_answer = f.read().decode("utf-8")
                 for i in range(0, len(full_answer), 5):
                     chunk = full_answer[i:i+5]
                     text_chunk_data = SSETextChunk(text=chunk)
@@ -193,13 +205,30 @@ async def execute_task(
                     yield sse_chunk
                     await asyncio.sleep(0.05)
 
+ 
+
+                """
+                ------------ 模拟流式发送文本块 ------------
+                full_answer = []
+                async for chunk in geometry_dify_api(query=combinde_query):
+                    text_chunk_data = SSETextChunk(text=chunk)
+                    sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                    yield sse_chunk
+                    await asyncio.sleep(0.05)
+                    full_answer.append(chunk)
+                    ---------------------------------
+                """
+                
+
                 # 2. 发送包含完整元数据的结束消息
+                print("发送之前先看看answer: ", ''.join(full_answer))
+                print("发送之前先看看answer: ", type(''.join(full_answer)))
                 final_response_data = SSEResponse(
-                    answer=full_answer,
+                    answer=''.join(full_answer),
                     metadata=GenerationMetadata(
-                        cad_file="model.step",
-                        code_file="script.py",
-                        preview_image="yuanbao.png"
+                        cad_file=  r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\1_b0734829-6d9e-43e7-950f-b717c22ed07e_145_1754619240_619.step",#rf"C:\Users\dell\Projects\cadquery_test\cadquery_test\mcp\mcp_out\{file_name}.step",#"model.step",
+                        code_file= r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\1_b0734829-6d9e-43e7-950f-b717c22ed07e_145_1754619240_619.py",#rf"C:\Users\dell\Projects\cadquery_test\cadquery_test\mcp\mcp_out\{file_name}.py",#"script.py",
+                        preview_image= None
                     )
                 )
                 
@@ -209,7 +238,7 @@ async def execute_task(
                 # 3. 保存结构化的助手消息到Redis
                 message = Message(
                     role="assistant",
-                    content=full_answer,
+                    content=''.join(full_answer),
                     metadata=final_response_data.metadata.model_dump(),
                     timestamp=datetime.now()
                 )
