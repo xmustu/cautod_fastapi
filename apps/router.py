@@ -66,29 +66,29 @@ async def download_file(
     - file_name: 要下载的文件的名称或相对路径。
     """
     try:
-        # --- 健壮的路径计算 ---
-        # 获取当前文件(router.py)所在的目录
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        # 从 'apps' 目录上升到项目根目录
-        project_root = os.path.dirname(current_file_dir)
-        # 安全地拼接 'files' 目录
-        base_dir = os.path.join(project_root, "files")
-        
-        # 构建安全的文件路径，防止目录遍历攻击
-        safe_path = os.path.abspath(os.path.join(base_dir, file_name))
+        # # --- 健壮的路径计算 ---
+        # # 获取当前文件(router.py)所在的目录
+        # current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        # # 从 'apps' 目录上升到项目根目录
+        # project_root = os.path.dirname(current_file_dir)
+        # # 安全地拼接 'files' 目录
+        # base_dir = os.path.join(project_root, "files")
 
-        if not safe_path.startswith(base_dir):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="禁止访问非授权目录。"
-            )
+        # # 构建安全的文件路径，防止目录遍历攻击
+        # safe_path = os.path.abspath(os.path.join(base_dir, file_name))
 
-        if not os.path.isfile(safe_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="文件未找到。"
-            )
-            
+        # if not safe_path.startswith(base_dir):
+        #     raise HTTPException(
+        #         status_code=status.HTTP_403_FORBIDDEN,
+        #         detail="禁止访问非授权目录。"
+        #     )
+
+        # if not os.path.isfile(safe_path):
+        #     raise HTTPException(
+        #         status_code=status.HTTP_404_NOT_FOUND,
+        #         detail="文件未找到。"
+        #     )
+        safe_path = file_name
         # 提取纯文件名用于响应头
         response_file_name = os.path.basename(safe_path)
         
