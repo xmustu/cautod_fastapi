@@ -1,0 +1,484 @@
+=== Êó•ÂøóÂºÄÂßã‰∫é 2025-08-11 11:22:17 ===
+¥ÌŒÛ: Cannot perform runtime binding on a null reference
+model path: C:\Users\dell\Projects\CAutoD\wenjian\AutoFrame.SLDPRT
+model save path: C:\Users\dell\Projects\CAutoD\wenjian
+opendoc: C:\Users\dell\Projects\CAutoD\wenjian\AutoFrame.SLDPRT
+doc type: 1
+processing...
+geting ieqmgr...
+equnum = 8
+"Bottom_main_tube_thick"= 0.01255243m
+equation0 = "Bottom_main_tube_thick"= 0.01255243m  equi_name = "Bottom_main_tube_thick"
+numleft = 26
+numright = 36
+val: 0.01255243
+"Uper_main_tube_thick"= 0.03955737m
+equation1 = "Uper_main_tube_thick"= 0.03955737m  equi_name = "Uper_main_tube_thick"
+numleft = 24
+numright = 34
+val: 0.03955737
+"Support_tube_thick"= 0.01458347m
+equation2 = "Support_tube_thick"= 0.01458347m  equi_name = "Support_tube_thick"
+numleft = 22
+numright = 32
+val: 0.01458347
+"DS_Bottom_main_tube_thick@≤›Õº12" = "Bottom_main_tube_thick"
+"DS_Upper_main_tube_thick@≤›Õº13" = "Uper_main_tube_thick"
+"DS_Support_tube_thick@≤›Õº15" = "Support_tube_thick"
+"Tripod_position"= 1.12977483m
+equation6 = "Tripod_position"= 1.12977483m  equi_name = "Tripod_position"
+numleft = 19
+numright = 29
+val: 1.12977483
+"DS_mid_len@≤›Õº1"="Tripod_position"
+sent 4args to pyt
+loop start
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.011923m
+para[1] = 0.046689m
+para[2] = 0.015937m
+para[3] = 1.174360m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.0119225m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.046689m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01593678m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.17435958m
+macro run success
+mass = 31.088842733871466
+vol = 0.031088842733871466
+reaching global stress...
+max stress: 2183262464
+checking...............
+Plot create ret is0
+plt count is 5
+act ret is 0
+snapshot at 1754882600....
+checked dir : C:\Users\dell\Projects\CAutoD\wenjian\PNGFILE
+cal done£∫vol=0.031089£¨stress=2183262464.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.010825m
+para[1] = 0.034114m
+para[2] = 0.012006m
+para[3] = 1.295253m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01082531m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.03411419m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.0120056m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.29525347m
+macro run success
+mass = 30.02019935584218
+vol = 0.03002019935584218
+CWResult null£¨no global stress
+cal done£∫vol=0.030020£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.010825m
+para[1] = 0.034114m
+para[2] = 0.012006m
+para[3] = 1.295253m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01082531m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.03411419m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.0120056m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.29525347m
+macro run success
+mass = 30.02019935584218
+vol = 0.03002019935584218
+CWResult null£¨no global stress
+cal done£∫vol=0.030020£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.010825m
+para[1] = 0.034114m
+para[2] = 0.012006m
+para[3] = 1.295253m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01082531m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.03411419m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.0120056m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.29525347m
+macro run success
+mass = 30.02019935584218
+vol = 0.03002019935584218
+CWResult null£¨no global stress
+cal done£∫vol=0.030020£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.010825m
+para[1] = 0.034114m
+para[2] = 0.012006m
+para[3] = 1.295253m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01082531m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.03411419m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.0120056m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.29525347m
+macro run success
+mass = 30.02019935584218
+vol = 0.03002019935584218
+CWResult null£¨no global stress
+cal done£∫vol=0.030020£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.013060m
+para[1] = 0.042850m
+para[2] = 0.011787m
+para[3] = 1.342132m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01306013m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04284969m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01178685m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.34213176m
+macro run success
+mass = 31.524092190552032
+vol = 0.03152409219055203
+CWResult null£¨no global stress
+cal done£∫vol=0.031524£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.013060m
+para[1] = 0.042850m
+para[2] = 0.011787m
+para[3] = 1.342132m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01306013m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04284969m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01178685m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.34213176m
+macro run success
+mass = 31.524092190552032
+vol = 0.03152409219055203
+CWResult null£¨no global stress
+cal done£∫vol=0.031524£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.013060m
+para[1] = 0.042850m
+para[2] = 0.011787m
+para[3] = 1.342132m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01306013m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04284969m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01178685m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.34213176m
+macro run success
+mass = 31.524092190552032
+vol = 0.03152409219055203
+CWResult null£¨no global stress
+cal done£∫vol=0.031524£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.013060m
+para[1] = 0.042850m
+para[2] = 0.011787m
+para[3] = 1.342132m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01306013m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04284969m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01178685m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.34213176m
+macro run success
+mass = 31.524092190552032
+vol = 0.03152409219055203
+CWResult null£¨no global stress
+cal done£∫vol=0.031524£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.010825m
+para[1] = 0.034717m
+para[2] = 0.011841m
+para[3] = 1.295253m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01082531m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.03471708m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01184143m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.29525347m
+macro run success
+mass = 29.986535002252992
+vol = 0.02998653500225299
+CWResult null£¨no global stress
+cal done£∫vol=0.029987£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.010825m
+para[1] = 0.034717m
+para[2] = 0.011841m
+para[3] = 1.295253m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01082531m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.03471708m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01184143m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.29525347m
+macro run success
+mass = 29.986535002252992
+vol = 0.02998653500225299
+CWResult null£¨no global stress
+cal done£∫vol=0.029987£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.010825m
+para[1] = 0.034717m
+para[2] = 0.011841m
+para[3] = 1.295253m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01082531m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.03471708m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01184143m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.29525347m
+macro run success
+mass = 29.986535002252992
+vol = 0.02998653500225299
+CWResult null£¨no global stress
+cal done£∫vol=0.029987£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.010825m
+para[1] = 0.034717m
+para[2] = 0.011841m
+para[3] = 1.295253m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01082531m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.03471708m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01184143m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.29525347m
+macro run success
+mass = 29.986535002252992
+vol = 0.02998653500225299
+CWResult null£¨no global stress
+cal done£∫vol=0.029987£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.011923m
+para[1] = 0.047391m
+para[2] = 0.015937m
+para[3] = 1.191232m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.0119225m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04739067m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01593678m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.19123219m
+macro run success
+mass = 31.290213058209734
+vol = 0.03129021305820973
+CWResult null£¨no global stress
+cal done£∫vol=0.031290£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.011923m
+para[1] = 0.047391m
+para[2] = 0.015937m
+para[3] = 1.191232m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.0119225m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04739067m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01593678m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.19123219m
+macro run success
+mass = 31.290213058209734
+vol = 0.03129021305820973
+CWResult null£¨no global stress
+cal done£∫vol=0.031290£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.011923m
+para[1] = 0.047391m
+para[2] = 0.015937m
+para[3] = 1.191232m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.0119225m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04739067m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01593678m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.19123219m
+macro run success
+mass = 31.290213058209734
+vol = 0.03129021305820973
+CWResult null£¨no global stress
+cal done£∫vol=0.031290£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.011923m
+para[1] = 0.047391m
+para[2] = 0.015937m
+para[3] = 1.191232m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.0119225m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04739067m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01593678m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.19123219m
+macro run success
+mass = 31.290213058209734
+vol = 0.03129021305820973
+CWResult null£¨no global stress
+cal done£∫vol=0.031290£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.013060m
+para[1] = 0.042247m
+para[2] = 0.011787m
+para[3] = 1.342132m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01306013m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04224689m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01178685m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.34213176m
+macro run success
+mass = 31.53269630916546
+vol = 0.031532696309165456
+CWResult null£¨no global stress
+cal done£∫vol=0.031533£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.013060m
+para[1] = 0.042247m
+para[2] = 0.011787m
+para[3] = 1.342132m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01306013m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04224689m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01178685m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.34213176m
+macro run success
+mass = 31.53269630916546
+vol = 0.031532696309165456
+CWResult null£¨no global stress
+cal done£∫vol=0.031533£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.013060m
+para[1] = 0.042247m
+para[2] = 0.011787m
+para[3] = 1.342132m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01306013m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04224689m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01178685m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.34213176m
+macro run success
+mass = 31.53269630916546
+vol = 0.031532696309165456
+CWResult null£¨no global stress
+cal done£∫vol=0.031533£¨stress=0.000000
+clock tik...
+
+ recv pyt agrs£¨pprocessing...
+para[0] = 0.013060m
+para[1] = 0.042247m
+para[2] = 0.011787m
+para[3] = 1.342132m
+found "Bottom_main_tube_thick", modifying...
+new equ: "Bottom_main_tube_thick" = 0.01306013m
+found "Uper_main_tube_thick", modifying...
+new equ: "Uper_main_tube_thick" = 0.04224689m
+found "Support_tube_thick", modifying...
+new equ: "Support_tube_thick" = 0.01178685m
+found "Tripod_position", modifying...
+new equ: "Tripod_position" = 1.34213176m
+macro run success
+mass = 31.53269630916546
+vol = 0.031532696309165456
+CWResult null£¨no global stress
+cal done£∫vol=0.031533£¨stress=0.000000
+clock tik...
+terminate call£¨exiting...
+vals saved: C:\Users\dell\Projects\CAutoD\wenjian\glb_val.txt
+model saved
+closing model...
+trying to kill proc...
+killed proc: SLDWORKS (PID: 37600)
+ºö
+   Bottom_main_tube_thickÔºö0.011922
+   Uper_main_tube_thickÔºö0.046689
+   Support_tube_thickÔºö0.015937
+   Tripod_positionÔºö1.174360
+
+2. ÊúÄ‰ºò‰ΩìÁßØÔºö0.031089
+3. ÊúÄ‰ºòÂ∫îÂäõÔºö2183262464.000000
+
+4. Á∫¶ÊùüÊù°‰ª∂ÔºöÊúÄÂ§ßÂÖÅËÆ∏Â∫îÂäõ = 1667155999.000000
+   Êó†ÂèØË°åËß£ÔºåÈÄâ‰∏≠‰ΩìÁßØÊúÄÂ∞èÁöÑ‰∏çÂèØË°åËß£
+
+=== subËøõÁ®ãÂ∑≤ÈÄÄÂá∫ÔºåÈÄÄÂá∫Á†Å: 0ÔºåÊó∂Èó¥: 2025-08-11 11:26:21 ===
+
+=== Á®ãÂ∫èÁªìÊùü‰∫é 2025-08-11 11:26:48 ===

@@ -13,6 +13,11 @@ from apps.chat import save_message_to_redis, Message
 from apps.app02 import geometry_dify_api
 import time 
 import uuid
+import asyncio
+import subprocess
+import threading
+import queue
+
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
     tags=["任务管理"]
@@ -192,23 +197,22 @@ async def execute_task(
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
 
-                # 前端测试案例
-                # 1. 模拟流式发送文本块
-                full_answer = ""
-                FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\test_example.txt"
-                with open(FILE_PATH, "rb") as f:
-                    full_answer = f.read().decode("utf-8")
-                for i in range(0, len(full_answer), 5):
-                    chunk = full_answer[i:i+5]
-                    text_chunk_data = SSETextChunk(text=chunk)
-                    sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-                    yield sse_chunk
-                    await asyncio.sleep(0.05)
+                # # 前端测试案例
+                # # 1. 模拟流式发送文本块
+                # full_answer = ""
+                # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\test_example.txt"
+                # with open(FILE_PATH, "rb") as f:
+                #     full_answer = f.read().decode("utf-8")
+                # for i in range(0, len(full_answer), 5):
+                #     chunk = full_answer[i:i+5]
+                #     text_chunk_data = SSETextChunk(text=chunk)
+                #     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                #     yield sse_chunk
+                #     await asyncio.sleep(0.05)
 
  
 
-                """
-                ------------ 模拟流式发送文本块 ------------
+                
                 full_answer = []
                 async for chunk in geometry_dify_api(query=combinde_query):
                     text_chunk_data = SSETextChunk(text=chunk)
@@ -216,19 +220,16 @@ async def execute_task(
                     yield sse_chunk
                     await asyncio.sleep(0.05)
                     full_answer.append(chunk)
-                    ---------------------------------
-                """
+                
                 
 
                 # 2. 发送包含完整元数据的结束消息
-                print("发送之前先看看answer: ", ''.join(full_answer))
-                print("发送之前先看看answer: ", type(''.join(full_answer)))
                 final_response_data = SSEResponse(
                     answer=''.join(full_answer),
                     metadata=GenerationMetadata(
-                        cad_file=  r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\1_b0734829-6d9e-43e7-950f-b717c22ed07e_145_1754619240_619.step",#rf"C:\Users\dell\Projects\cadquery_test\cadquery_test\mcp\mcp_out\{file_name}.step",#"model.step",
-                        code_file= r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\1_b0734829-6d9e-43e7-950f-b717c22ed07e_145_1754619240_619.py",#rf"C:\Users\dell\Projects\cadquery_test\cadquery_test\mcp\mcp_out\{file_name}.py",#"script.py",
-                        preview_image= None
+                        cad_file=  rf"C:\Users\dell\Projects\cadquery_test\cadquery_test\mcp\mcp_out\{file_name}.step",#"model.step",
+                        code_file= rf"C:\Users\dell\Projects\cadquery_test\cadquery_test\mcp\mcp_out\{file_name}.py",#"script.py",
+                        preview_image= rf"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\yuanbao.png"  # 预览图片路径
                     )
                 )
                 
@@ -331,17 +332,124 @@ async def execute_task(
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
 
-                full_answer = "已完成机械臂的轻量化设计。根据要求，在满足材料屈服强度为250MPa、安全系数为2（许用应力125MPa）的约束下，我们对机械臂进行了拓扑优化。最终，机械臂质量显著降低，且最大应力点满足安全要求。优化过程的收敛曲线图如下所示。"
-                
+                #full_answer = "已完成机械臂的轻量化设计。根据要求，在满足材料屈服强度为250MPa、安全系数为2（许用应力125MPa）的约束下，我们对机械臂进行了拓扑优化。最终，机械臂质量显著降低，且最大应力点满足安全要求。优化过程的收敛曲线图如下所示。"
+
+                # 前端测试案例
                 # 1. 模拟流式发送文本块
+                full_answer = ""
+                FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\logdebug.txt"
+                with open(FILE_PATH, "rb") as f:
+                    full_answer = f.read().decode("utf-8")
                 for i in range(0, len(full_answer), 5):
                     chunk = full_answer[i:i+5]
                     text_chunk_data = SSETextChunk(text=chunk)
                     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
                     yield sse_chunk
                     await asyncio.sleep(0.05)
-
                 # 2. 发送包含完整元数据的结束消息
+                # 1. 定义在子线程中运行的函数：读取子进程输出并放入队列
+                # ----------实际部分----------
+                # output_queue = queue.Queue()  # 线程安全的队列
+
+                # def read_subprocess_output(proc: subprocess.Popen, q: queue.Queue):
+                #     """在独立线程中读取子进程输出"""
+                #     # 读取stdout
+                #     for line in iter(proc.stdout.readline, ''):
+                #         if line:
+                #             q.put(('stdout', line.strip()))
+            
+                #     # 读取stderr
+                #     for line in iter(proc.stderr.readline, ''):
+                #         if line:
+                #             q.put(('stderr', line.strip()))
+            
+                #     proc.wait()
+                #     q.put(('done', None))  # 发送结束信号
+                
+                
+                # command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\wenjian\sldwks.py"]
+                
+                # proc =  subprocess.Popen(
+                #     command,
+                #     stdout=subprocess.PIPE,
+                #     stderr=subprocess.PIPE,
+                #     text=True,          # 输出为字符串
+                #     bufsize=1,          # 行缓冲
+                #     universal_newlines=True
+                # )
+                # print("启动程序了吗")
+                # full_answer = ""
+                # # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\wenjian\logdebug.txt"
+                # # async with open(FILE_PATH, "rb") as f:
+                # #     full_answer = await f.read().decode("utf-8")
+                # # 启动读取线程
+                # read_thread = threading.Thread(
+                #     target=read_subprocess_output,
+                #     args=(proc, output_queue),
+                #     daemon=True
+                # )
+                # read_thread.start()
+                # while True:
+                #     # 非阻塞检查队列（避免阻塞事件循环）
+                #     try:
+                #         # 使用0.1秒超时，既保证实时性又不阻塞事件循环
+                #         stream_type, line = output_queue.get(timeout=0.1)
+                
+                #         if stream_type == 'done':
+                #             break  # 进程结束
+                
+                #         if line:
+                #             print(f"[{stream_type}] {line}")
+                #             # 发送到前端
+                #             text_chunk_data = SSETextChunk(text=line)
+                #             sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                #             yield sse_chunk
+                #             await asyncio.sleep(0.05)  # 控制发送速度
+                    
+                #             # 积累完整回答
+                #             if stream_type == 'stdout':
+                #                 full_answer += line + "\n\n"
+                #             else:  # stderr
+                #                 full_answer += f"[错误] {line}\n\n"
+                
+                #         output_queue.task_done()
+            
+                #     except queue.Empty:
+                #     # 队列空时检查进程是否已意外终止
+                #         if proc.poll() is not None and not read_thread.is_alive():
+                #             break
+                #         continue
+                # ----------实际部分----------
+
+                #     line = proc.stdout.readline().strip()
+                #     if not line and proc.poll() is None:
+                #         # 如果读取到空字符串且进程已结束，则退出循环
+                #         break
+                #     if line:
+                #         print("line: ", line)
+                #         text_chunk_data = SSETextChunk(text=line)
+                #         sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                #         yield sse_chunk
+                #         await asyncio.sleep(0.05)
+                #         full_answer = full_answer + line + "\n\n"
+                # proc.wait()
+                # for i in range(0, len(full_answer), 5):
+                #     chunk = full_answer[i:i+5]
+                #     text_chunk_data = SSETextChunk(text=chunk)
+                #     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                #     yield sse_chunk
+                #     await asyncio.sleep(0.05)
+                mock_parts = [
+                    PartData(id=1, name="收敛曲线", imageUrl=r"C:\Users\dell\Projects\CAutoD\wenjian\convergence_curve.png", fileName="convergence_curve.png"),
+                    PartData(id=2, name="parameter_distribution", imageUrl=r"C:\Users\dell\Projects\CAutoD\wenjian\parameter_distribution.png", fileName="parameter_distribution.png"),
+                    
+                ]
+
+                for part_data in mock_parts:
+                    part_chunk_data = SSEPartChunk(part=part_data)
+                    yield f'event: part_chunk\ndata: {part_chunk_data.model_dump_json()}\n\n'
+                    await asyncio.sleep(0.1) # 模拟网络延迟
+
                 final_response_data = SSEResponse(
                     answer=full_answer,
                     metadata=GenerationMetadata(

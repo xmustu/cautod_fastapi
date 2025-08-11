@@ -29,7 +29,7 @@ geometry = APIRouter()
 # 调用dify的API进行几何建模
 async def geometry_dify_api(query: str) -> AsyncGenerator:
    # 连接本地服务，使用Dify默认端口5001（根据实际情况修改）
-   conn = http.client.HTTPConnection("192.168.10.50",8000)
+   conn = http.client.HTTPConnection("127.0.0.1",8000)
 
    payload = json.dumps({
       "inputs": {},
@@ -54,7 +54,7 @@ async def geometry_dify_api(query: str) -> AsyncGenerator:
    if res.status != 200:
        yield f"错误： Dify服务返回状态 {res.status} {res.reason}"
        return
-   
+   print("连上了吗")
    # 处理流式响应
    full_answer = []
    for line in res:
@@ -111,7 +111,7 @@ class GenerationMetadata(BaseModel):
     """生成结果的元数据模型，包含格式验证"""
     cad_file: str  # 生成的 CAD 模型文件下载地址（.step 格式）
     code_file: str  # 生成的参数化建模代码文件（.py 格式）
-    preview_image: Union[str, None] = None  # 3D 模型预览图片（.png 格式）
+    preview_image: Union[str, None]  # 3D 模型预览图片（.png 格式）
 
     @field_validator('cad_file')
     def validate_cad_file(cls, v):
@@ -128,7 +128,8 @@ class GenerationMetadata(BaseModel):
 
     @field_validator('preview_image')
     def validate_preview_image(cls, v):
-        if not v.lower().endswith('.png'):
+        #仅当 v 是一个非空字符串时才进行验证
+        if v and not v.lower().endswith('.png'):
             raise ValueError('预览图片必须是.png格式') 
         return v
 
