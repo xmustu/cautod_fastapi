@@ -8,7 +8,8 @@ from datetime import datetime
 
 from core.authentication import get_current_active_user, User
 from database.models_1 import Tasks, Conversations
-from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem, PartData, SSEPartChunk
+from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem, PartData, SSEPartChunk, SSEImageChunk
+import os
 from apps.chat import save_message_to_redis, Message
 from apps.app02 import geometry_dify_api
 import time 
@@ -197,49 +198,63 @@ async def execute_task(
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
 
-                # # 前端测试案例
-                # # 1. 模拟流式发送文本块
-                # full_answer = ""
-                # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\test_example.txt"
-                # with open(FILE_PATH, "rb") as f:
-                #     full_answer = f.read().decode("utf-8")
-                # for i in range(0, len(full_answer), 5):
-                #     chunk = full_answer[i:i+5]
-                #     text_chunk_data = SSETextChunk(text=chunk)
-                #     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-                #     yield sse_chunk
-                #     await asyncio.sleep(0.05)
-
- 
-
-                
-                full_answer = []
-                async for chunk in geometry_dify_api(query=combinde_query):
+                # 前端测试案例
+                # 1. 模拟流式发送文本块
+                full_answer = ""
+                FILE_PATH = r"D:\else\CAutoD_SoftWare\temp\cautod_fastapi\files\test_example.txt"
+                with open(FILE_PATH, "rb") as f:
+                    full_answer = f.read().decode("utf-8")
+                for i in range(0, len(full_answer), 5):
+                    chunk = full_answer[i:i+5]
                     text_chunk_data = SSETextChunk(text=chunk)
                     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
                     yield sse_chunk
                     await asyncio.sleep(0.05)
-                    full_answer.append(chunk)
+
+ 
+
+                
+                # full_answer = []
+                # async for chunk in geometry_dify_api(query=combinde_query):
+                #     text_chunk_data = SSETextChunk(text=chunk)
+                #     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                #     yield sse_chunk
+                #     await asyncio.sleep(0.05)
+                #     full_answer.append(chunk)
                 
                 
 
-                # 2. 发送包含完整元数据的结束消息
+                # 2. 流式发送预览图
+                image_parts_for_redis = []
+                preview_image_path = r"D:\else\CAutoD_SoftWare\temp\cautod_fastapi\files\yuanbao.png"
+                if os.path.exists(preview_image_path):
+                    file_name = os.path.basename(preview_image_path)
+                    image_url = f"/files/{file_name}" # 修正：指向 /files 路由
+                    
+                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=file_name, altText="几何建模预览图")
+                    yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+                    await asyncio.sleep(0.1)
+                    
+                    image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": file_name, "altText": "几何建模预览图"})
+
+                # 3. 发送包含完整元数据的结束消息
                 final_response_data = SSEResponse(
                     answer=''.join(full_answer),
                     metadata=GenerationMetadata(
-                        cad_file=  rf"C:\Users\dell\Projects\cadquery_test\cadquery_test\mcp\mcp_out\{file_name}.step",#"model.step",
-                        code_file= rf"C:\Users\dell\Projects\cadquery_test\cadquery_test\mcp\mcp_out\{file_name}.py",#"script.py",
-                        preview_image= rf"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\yuanbao.png"  # 预览图片路径
+                        cad_file="model.step",
+                        code_file="script.py",
+                        preview_image=None  # 置空，因为已通过 image_chunk 发送
                     )
                 )
                 
                 sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
                 yield sse_final
 
-                # 3. 保存结构化的助手消息到Redis
+                # 4. 保存结构化的助手消息到Redis
                 message = Message(
                     role="assistant",
                     content=''.join(full_answer),
+                    parts=image_parts_for_redis, # 保存图片信息
                     metadata=final_response_data.metadata.model_dump(),
                     timestamp=datetime.now()
                 )
@@ -337,7 +352,7 @@ async def execute_task(
                 # 前端测试案例
                 # 1. 模拟流式发送文本块
                 full_answer = ""
-                FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\logdebug.txt"
+                FILE_PATH = r"D:\else\CAutoD_SoftWare\temp\cautod_fastapi\files\test_example.txt"
                 with open(FILE_PATH, "rb") as f:
                     full_answer = f.read().decode("utf-8")
                 for i in range(0, len(full_answer), 5):
@@ -439,16 +454,33 @@ async def execute_task(
                 #     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
                 #     yield sse_chunk
                 #     await asyncio.sleep(0.05)
-                mock_parts = [
-                    PartData(id=1, name="收敛曲线", imageUrl=r"C:\Users\dell\Projects\CAutoD\wenjian\convergence_curve.png", fileName="convergence_curve.png"),
-                    PartData(id=2, name="parameter_distribution", imageUrl=r"C:\Users\dell\Projects\CAutoD\wenjian\parameter_distribution.png", fileName="parameter_distribution.png"),
-                    
+                
+                # --- 采用新的图片流式方案 ---
+                mock_images = [
+                    {"path": r"D:\else\CAutoD_SoftWare\temp\cautod_fastapi\files\yuanbao.png", "alt": "收敛曲线"},
+                    {"path": r"D:\else\CAutoD_SoftWare\temp\cautod_fastapi\files\yuanbao.png", "alt": "参数分布图"}
                 ]
 
-                for part_data in mock_parts:
-                    part_chunk_data = SSEPartChunk(part=part_data)
-                    yield f'event: part_chunk\ndata: {part_chunk_data.model_dump_json()}\n\n'
-                    await asyncio.sleep(0.1) # 模拟网络延迟
+                image_parts_for_redis = []
+                for img_data in mock_images:
+                    if os.path.exists(img_data["path"]):
+                        file_name = os.path.basename(img_data["path"])
+                        image_url = f"/files/{file_name}" # 修正：指向 /files 路由
+                        
+                        # 调试：打印实际的文件路径
+                        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+                        project_root = os.path.dirname(current_file_dir)
+                        base_dir = os.path.join(project_root, "files")
+                        safe_path = os.path.abspath(os.path.join(base_dir, file_name))
+                        print(f"Attempting to serve image from: {safe_path}")
+
+                        # 使用 SSEImageChunk 发送图片信息
+                        image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=file_name, altText=img_data["alt"])
+                        yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+                        await asyncio.sleep(0.1) # 恢复延迟
+                        
+                        # 准备存入Redis的数据
+                        image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": file_name, "altText": img_data["alt"]})
 
                 final_response_data = SSEResponse(
                     answer=full_answer,
@@ -456,7 +488,7 @@ async def execute_task(
                         # 提供所有必需的字段，并确保格式正确
                         cad_file="model.step",
                         code_file="script.py",
-                        preview_image="preview.png"
+                        preview_image=None
                     )
                 )
                 
@@ -467,6 +499,8 @@ async def execute_task(
                 message = Message(
                     role="assistant",
                     content=full_answer,
+                    # 将图片信息也存入 message
+                    parts=image_parts_for_redis, 
                     metadata=final_response_data.metadata.model_dump(),
                     timestamp=datetime.now()
                 )

@@ -1,7 +1,8 @@
-from fastapi import FastAPI
-from fastapi import Request
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import os
 
 from apps.router import router
 from apps.app01 import user
@@ -84,6 +85,12 @@ app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
 app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
 app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
+
+# --- 新增：挂载静态文件目录 ---
+# 创建 files 目录（如果不存在）
+os.makedirs("files", exist_ok=True)
+app.mount("/files", StaticFiles(directory="files"), name="files")
+
 
 if __name__ == '__main__':
     uvicorn.run("main:app", host="127.0.0.1", port=8080,  reload=True, reload_excludes=exclude_dirs)

@@ -160,6 +160,13 @@ class SSEPartChunk(BaseModel):
     event: str = "part_chunk"
     part: PartData
 
+class SSEImageChunk(BaseModel):
+    """用于通过SSE流式传输单个图片URL的模型"""
+    event: str = "image_chunk"
+    imageUrl: str
+    fileName: str
+    altText: Optional[str] = None
+
 
 # 创建新会话的接口
 @geometry.post("/conversation", response_model=ConversationResponse)
