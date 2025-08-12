@@ -63,7 +63,6 @@ class PendingTaskResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 # --- API 端点实现 ---
 
 @router.get("/pending", response_model=List[PendingTaskResponse], summary="获取所有待处理的任务")
@@ -185,7 +184,7 @@ async def execute_task(
     timestamp = f"{int(time.time())}_{uuid.uuid4().hex[:3]}"
 
     file_name = f'{current_user.user_id}_{request.conversation_id}_{request.task_id}_{timestamp}'
-    combinde_query = request.query + f". 我希望生成的.py 和 .step 文件的命名为：{file_name}" 
+    combinde_query = request.query + f". 我希望生成的.py 和 .step 文件的命名为：{file_name}。请以Markdown格式返回结果，其中应包含必要的代码块和说明。" 
     # + r'\n请注意文件保存路径为"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\mcp_out"'
     print("combinde_query: ", combinde_query)
     # 根据任务类型路由到不同的处理逻辑
@@ -230,7 +229,6 @@ async def execute_task(
                 if os.path.exists(preview_image_path):
                     file_name = os.path.basename(preview_image_path)
                     image_url = f"/files/{file_name}" # 修正：指向 /files 路由
-                    
                     image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=file_name, altText="几何建模预览图")
                     yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
                     await asyncio.sleep(0.1)

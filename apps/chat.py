@@ -221,6 +221,9 @@ async def get_user_history(
         else:
             raise NotImplementedError
         
+        # 按时间戳降序排序
+        history.sort(key=lambda x: x.get('last_timestamp', 0), reverse=True)
+        
         return {
             "user_id": current_user.user_id,
             "history": history,
