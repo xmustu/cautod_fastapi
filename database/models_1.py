@@ -41,7 +41,7 @@ class Conversations(Model):
 class Tasks(Model):
     task_id = fields.IntField(pk=True)
     conversation = fields.ForeignKeyField(
-        "models.Conversations", related_name="tasks", to_field="conversation_id"
+        "models.Conversations", related_name="tasks", to_field="conversation_id", on_delete=fields.CASCADE
     )
     user_id = fields.IntField()
     task_type = fields.CharField(max_length=50)  # 'geometry', 'retrieval', 'optimize'

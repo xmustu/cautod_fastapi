@@ -50,7 +50,7 @@ async def get_me(current_user: User = Depends(get_current_active_user)):
     # current_user 是从 token 中解码出的 Pydantic 模型
     # 我们用它来从数据库中获取最新的、完整的用户信息
     user_info = await Users.get(email=current_user.email).values(
-        "user_id", "email", "created_at"
+        "user_id", "email", "created_at","username"
     )
     if not user_info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

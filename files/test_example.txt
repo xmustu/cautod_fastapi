@@ -1,0 +1,52 @@
+# 几何建模任务报告
+
+**任务已成功完成！**
+
+根据您的请求，我们已经生成了所需的几何模型。
+
+## 生成摘要
+
+- **模型名称**: `yuanbao_model`
+- **请求时间**: `2024-08-12 11:59:00`
+- **状态**: `成功`
+
+## 建模脚本
+
+这是用于生成模型的 Python 脚本。您可以使用此脚本进行复现或修改。
+
+```python
+import cadquery as cq
+
+def create_gear(module, teeth):
+    """
+    使用 CadQuery 创建一个简单的齿轮。
+    """
+    # 参数
+    pressure_angle = 20.0
+    
+    # 创建齿轮
+    gear = cq.Workplane("XY").gear(
+        module=module, 
+        teeth=teeth, 
+        pressure_angle=pressure_angle
+    )
+    
+    return gear
+
+# 创建一个齿轮实例
+result = create_gear(module=1.0, teeth=30)
+
+# 显示或保存模型
+# show_object(result)
+cq.exporters.export(result, 'gear.step')
+
+print("齿轮模型已生成并保存为 gear.step")
+```
+
+## 后续步骤
+
+1.  **下载** 生成的 `.step` 和 `.py` 文件。
+2.  在您的 CAD 软件中 **打开** `.step` 文件进行验证。
+3.  如果需要，可以 **修改** `.py` 脚本以调整参数。
+
+*祝您设计愉快！*

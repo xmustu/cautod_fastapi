@@ -63,38 +63,37 @@ async def download_file(
 ):
     """
     从服务器安全地下载文件。
-    - file_name: 要下载的文件的名称或相对路径。
+    - file_name: 要下载的文件的名称。
     """
     try:
-        # # --- 健壮的路径计算 ---
-        # # 获取当前文件(router.py)所在的目录
-        # current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        # # 从 'apps' 目录上升到项目根目录
-        # project_root = os.path.dirname(current_file_dir)
-        # # 安全地拼接 'files' 目录
-        # base_dir = os.path.join(project_root, "files")
+        # --- 健壮的路径计算 ---
+        # 获取当前文件(router.py)所在的目录
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        # 从 'apps' 目录上升到项目根目录
+        project_root = os.path.dirname(current_file_dir)
+        # 安全地拼接 'files' 目录
+        base_dir = os.path.join(project_root, "files")
 
-        # # 构建安全的文件路径，防止目录遍历攻击
-        # safe_path = os.path.abspath(os.path.join(base_dir, file_name))
+        # 构建安全的文件路径，防止目录遍历攻击
+        safe_path = os.path.abspath(os.path.join(base_dir, file_name))
 
-        # if not safe_path.startswith(base_dir):
-        #     raise HTTPException(
-        #         status_code=status.HTTP_403_FORBIDDEN,
-        #         detail="禁止访问非授权目录。"
-        #     )
+        if not safe_path.startswith(base_dir):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="禁止访问非授权目录。"
+            )
 
-        # if not os.path.isfile(safe_path):
-        #     raise HTTPException(
-        #         status_code=status.HTTP_404_NOT_FOUND,
-        #         detail="文件未找到。"
-        #     )
-        safe_path = file_name
+        if not os.path.isfile(safe_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="文件未找到。"
+            )
+
         # 提取纯文件名用于响应头
         response_file_name = os.path.basename(safe_path)
         
         # 动态推断 MIME 类型
         media_type, _ = mimetypes.guess_type(safe_path)
-        print(f"Guessed MIME type for {file_name}: {media_type}") # Debug log
         if media_type is None:
             media_type = 'application/octet-stream' # 如果无法推断，则使用默认值
 
@@ -142,5 +141,53 @@ async def get_all_conversations(request: Request, #user_id: str, authorization :
 ):
     # 验证授权
     #await authenticate(authorization)
-    conversations = await Conversations.filter(user_id=current_user.user_id).all()
+    conversations = await Conversations.filter(user_id=current_user.user_id).order_by("-created_at").all()
     return conversations
+
+from apps.chat import get_message_key, get_user_task_key
+
+@router.delete("/conversation/{conversation_id}", summary="删除会话及其所有关联数据")
+async def delete_conversation(
+    request: Request,
+    conversation_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    删除一个会话，包括：
+    - 会话本身
+    - 该会话下的所有任务
+    - 每个任务在 Redis 中的对话历史
+    """
+    redis_client = request.app.state.redis
+
+    # 1. 查找会话
+    conversation = await Conversations.get_or_none(
+        conversation_id=conversation_id, user_id=current_user.user_id
+    )
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found or does not belong to the current user."
+        )
+
+    # 2. 查找并删除关联的任务及其 Redis 历史
+    associated_tasks = await Tasks.filter(conversation_id=conversation_id)
+    if redis_client:
+        user_task_key = get_user_task_key(current_user.user_id)
+        for task in associated_tasks:
+            task_id_str = str(task.task_id)
+            message_key = get_message_key(current_user.user_id, task_id_str)
+            # 从用户任务哈希中删除任务
+            await redis_client.hdel(user_task_key, task_id_str)
+            # 删除任务的消息列表
+            await redis_client.delete(message_key)
+
+    # 3. 明确删除所有关联的任务
+    for task in associated_tasks:
+        await task.delete()
+
+    # 4. 最后删除会话
+    await conversation.delete()
+    
+    return {"message": "会话及所有关联数据已成功删除"}
