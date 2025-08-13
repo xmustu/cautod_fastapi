@@ -16,6 +16,8 @@ from database.models_1 import *
 from .schemas import ConversationOut
 import os
 import mimetypes
+from apps.chat import get_message_key, get_user_task_key
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
@@ -152,3 +154,48 @@ async def get_all_conversations(request: Request, #user_id: str, authorization :
     conversations = await Conversations.filter(user_id=current_user.user_id).all()
     return conversations
 
+@router.delete("/conversation/{conversation_id}", summary="删除会话及其所有关联数据")
+async def delete_conversation(
+    request: Request,
+    conversation_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    删除一个会话，包括：
+    - 会话本身
+    - 该会话下的所有任务
+    - 每个任务在 Redis 中的对话历史
+    """
+    redis_client = request.app.state.redis
+
+    # 1. 查找会话
+    conversation = await Conversations.get_or_none(
+        conversation_id=conversation_id, user_id=current_user.user_id
+    )
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found or does not belong to the current user."
+        )
+
+    # 2. 查找并删除关联的任务及其 Redis 历史
+    associated_tasks = await Tasks.filter(conversation_id=conversation_id)
+    if redis_client:
+        user_task_key = get_user_task_key(current_user.user_id)
+        for task in associated_tasks:
+            task_id_str = str(task.task_id)
+            message_key = get_message_key(current_user.user_id, task_id_str)
+            # 从用户任务哈希中删除任务
+            await redis_client.hdel(user_task_key, task_id_str)
+            # 删除任务的消息列表
+            await redis_client.delete(message_key)
+
+    # 3. 明确删除所有关联的任务
+    for task in associated_tasks:
+        await task.delete()
+
+    # 4. 最后删除会话
+    await conversation.delete()
+    
+    return {"message": "会话及所有关联数据已成功删除"}
