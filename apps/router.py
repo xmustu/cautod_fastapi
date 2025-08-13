@@ -33,11 +33,11 @@ ALLOWED_BASE_DIRS = [
 
 async def save_file(file, path: Optional[str] = None):
     if path == None:
-        path = "files"
+        path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "files"))
     res = await file.read()
-    hash_name = hashlib.md5(file.filename.encode()).hexdigest()[:16]
-    file_name = f"{hash_name}.{file.filename.rsplit('.', 1)[-1]}"
-    full_file = f"{path}/{file_name}"
+    #hash_name = hashlib.md5(file.filename.encode()).hexdigest()[:16]
+    #file_name = f"{hash_name}.{file.filename.rsplit('.', 1)[-1]}"
+    full_file = f"{path}\{file.filename}"
     with open(full_file, "wb") as f:
         f.write(res)
     return full_file
@@ -54,13 +54,10 @@ def home(request: Request, alert: Optional[str] = None):
 @router.post("/upload_file", summary="上传文件")
 async def upload_file(*, 
                 file: UploadFile,
-                #authorization : str = Form(),
                 current_user: User = Depends(get_current_active_user),
                 path: Optional[str] = None,
                 ):
     
-    # 验证授权
-    #authenticate(authorization)
     file_local = await save_file(file, path)
     return {"file_name":file.filename, # hash随机命名
             "content_type": file.content_type,
