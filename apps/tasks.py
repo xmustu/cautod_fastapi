@@ -241,8 +241,8 @@ async def execute_task(
                 final_response_data = SSEResponse(
                     answer=''.join(full_answer),
                     metadata=GenerationMetadata(
-                        cad_file="model.step",
-                        code_file="script.py",
+                        cad_file=f"{file_name}.step",
+                        code_file=f"{file_name}.py",
                         preview_image=None  # 置空，因为已通过 image_chunk 发送
                     )
                 )
@@ -381,18 +381,28 @@ async def execute_task(
                     proc.wait()
                     q.put(('done', None))  # 发送结束信号
                 
-                
+                env = os.environ.copy()  # 默认变量
+                env["MODEL_PATH"] = rf"{request.file_url}" if request.file_url else r"C:\Users\dell\Projects\CAutoD\wenjian\AutoFrame.SLDPRT"  # solidwork模型路径
+                print("request.file_url:", request.file_url)
+                print("request.files:" ,request.files)
+                env["PYTHONUNBUFFERED"] = "1"  # 缓冲大小
+                # 父进程中添加调试打印
+
                 command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\wenjian\sldwks.py"]
-                
+                #command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\continue_print.py"]
+                print("执行命令:", command)
+                print("传递的MODEL_PATH:", env.get("MODEL_PATH"))
+                #print(env["MODEL_PATH"])
                 proc =  subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,          # 输出为字符串
                     bufsize=1,          # 行缓冲
-                    universal_newlines=True
+                    universal_newlines=True,
+                    env=env
                 )
-                print("启动程序了吗")
+                #print("启动程序了吗")
                 full_answer = ""
                 # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\wenjian\logdebug.txt"
                 # async with open(FILE_PATH, "rb") as f:
@@ -414,9 +424,12 @@ async def execute_task(
                             break  # 进程结束
                 
                         if line:
-                            print(f"[{stream_type}] {line}")
+                            #print(f"[{stream_type}] {line}")
                             # 发送到前端
                             # 关键：将字符串中的 \n 转义符替换为真正的换行控制字符
+                            # 确保行尾有换行符
+                            if not line.endswith('\n'):
+                                line += '\n'
                             chunk = line.replace("\\n", "\n")
                             text_chunk_data = SSETextChunk(text=chunk)
                             sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
@@ -459,8 +472,8 @@ async def execute_task(
                 
                 # --- 采用新的图片流式方案 ---
                 mock_images = [
-                    {"path": r"D:\else\CAutoD_SoftWare\temp\cautod_fastapi\files\yuanbao.png", "alt": "收敛曲线"},
-                    {"path": r"D:\else\CAutoD_SoftWare\temp\cautod_fastapi\files\yuanbao.png", "alt": "参数分布图"}
+                    {"path": r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\convergence_curve.png", "alt": "收敛曲线"},
+                    {"path": r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\parameter_distribution.png", "alt": "参数分布图"}
                 ]
 
                 image_parts_for_redis = []
