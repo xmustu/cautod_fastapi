@@ -224,6 +224,7 @@ async def get_user_history(
         # 按时间戳降序排序
         history.sort(key=lambda x: x.get('last_timestamp', 0), reverse=True)
         
+                             
         return {
             "user_id": current_user.user_id,
             "history": history,
@@ -254,6 +255,7 @@ async def delete_task(
         else:
             raise NotImplementedError
         
+
         return {"message": "任务历史已清除", "task_id": task_id, "user_id": current_user.user_id}
     except Exception as e:
 

@@ -18,7 +18,8 @@ import asyncio
 import subprocess
 import threading
 import queue
-
+from pathlib import Path
+import shutil
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
     tags=["任务管理"]
@@ -96,8 +97,8 @@ async def create_task(
     task_data: TaskCreateRequest,
     current_user: User = Depends(get_current_active_user)
 ):
-    print("task_data: ", task_data)
-    redis_client = request.app.state.redis
+    #print("task_data: ", task_data)
+    #redis_client = request.app.state.redis
     """
     创建并注册一个新的任务实例。
     
@@ -123,6 +124,20 @@ async def create_task(
         # 'details' 字段在 Tasks 模型中不存在，因此不直接保存
     )
     
+    # 创建任务的文件存放目录
+    # 获取当前目录的上一级目录
+    parent_dir = Path(os.getcwd())
+    
+    # 构建目标目录路径：上一级目录/files/会话ID
+    task_dir = parent_dir / "files" / str(task_data.conversation_id) / str(new_task.task_id)
+    
+    try:
+        # 创建目录（包括所有必要的父目录）
+        task_dir.mkdir(parents=True, exist_ok=True)
+        print(f"成功创建任务目录: {task_dir}")
+    except Exception as e:
+        print(f"创建任务目录失败: {e}")
+        raise
     # 移除在此处保存消息的逻辑，该职责已转移到前端
     # message = Message(
     #     role="user",
@@ -340,6 +355,23 @@ async def execute_task(
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     elif request.task_type == "optimize":
+        """
+        将 swg_path 指向的单个文件复制到目录。
+        如果同名文件已存在，则跳过。
+        """
+        swg_path = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\machweijfiweowef.swp"
+        if not os.path.isfile(swg_path):
+            print(f"错误：{swg_path} 不存在或不是文件")
+            return
+
+        dst_path = os.path.join(os.path.dirname(request.file_url), os.path.basename(swg_path))
+
+        if os.path.exists(dst_path):
+            print(f"跳过：{dst_path} 已存在")
+        else:
+            shutil.copy2(swg_path, dst_path)   # copy2 保留元数据
+            print(f"已复制：{swg_path} -> {dst_path}")
+
         async def stream_generator():
             try:
                 # 首先发送会话和任务信息

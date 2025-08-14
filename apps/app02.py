@@ -22,7 +22,8 @@ import asyncio
 import json 
 import http.client
 import json
-
+import os
+from pathlib import Path
 geometry = APIRouter()
 
 
@@ -183,4 +184,18 @@ async def create_conversation(
         user_id=current_user.user_id,
         title=request.title
     )
+
+    # 获取当前目录的上一级目录
+    parent_dir = Path(os.getcwd())
+    
+    # 构建目标目录路径：上一级目录/files/会话ID
+    conversation_dir = parent_dir / "files" / conversation_id
+    
+    try:
+        # 创建目录（包括所有必要的父目录）
+        conversation_dir.mkdir(parents=True, exist_ok=True)
+        print(f"成功创建会话目录: {conversation_dir}")
+    except Exception as e:
+        print(f"创建会话目录失败: {e}")
+        raise
     return conversation

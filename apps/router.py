@@ -33,9 +33,11 @@ ALLOWED_BASE_DIRS = [
     r"C:\Users\dell\Projects\CAutoD\wenjian"
 ]
 
-async def save_file(file, path: Optional[str] = None):
+async def save_file(file, path: Optional[str] = None, conversation_id: int = None, task_id: int = None):
     if path == None:
-        path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "files"))
+        path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "files", str(conversation_id), str(task_id)))
+        os.makedirs(path, exist_ok=True)
+    print("path: ", path)
     res = await file.read()
     #hash_name = hashlib.md5(file.filename.encode()).hexdigest()[:16]
     #file_name = f"{hash_name}.{file.filename.rsplit('.', 1)[-1]}"
@@ -56,12 +58,15 @@ def home(request: Request, alert: Optional[str] = None):
 @router.post("/upload_file", summary="上传文件")
 async def upload_file(*, 
                 file: UploadFile,
+                conversation_id: str = Form(...),
+                task_id: int = Form(...),
                 current_user: User = Depends(get_current_active_user),
                 path: Optional[str] = None,
+
                 ):
     
-    file_local = await save_file(file, path)
-    return {"file_name":file.filename, # hash随机命名
+    file_local = await save_file(file, path, conversation_id, task_id)
+    return {"file_name":file.filename, 
             "content_type": file.content_type,
             "path": file_local
     }
