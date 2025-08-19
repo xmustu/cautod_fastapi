@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     REDIS_PORT: int
     REDIS_PASSWORD: str = None
     REDIS_AVAILABLE: bool
+
+    OPTIMIZE_API_URL: str
     model_config = SettingsConfigDict(env_file=".env")
 
 
