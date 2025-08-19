@@ -28,6 +28,7 @@ class Message(BaseModel):
     timestamp: datetime
     metadata: Optional[Dict[str, Any]] = None
     parts: Optional[List[Dict[str, Any]]] = None
+    status: Optional[str] = "done" # 新增字段，默认为 'done'
 
 
 def get_message_key(user_id: str, task_id: str) -> str:
@@ -40,46 +41,68 @@ def get_user_task_key(user_id: str) -> str:
 
 
 # 保存对话消息
-async def save_message_to_redis(user_id: str, task_id: str, task_type: str, conversation_id: str, message:Message, redis_client:aioredis.Redis):
+async def save_or_update_message_in_redis(
+        user_id: str, 
+        task_id: str, 
+        task_type: str, 
+        conversation_id: str, 
+        message:Message, 
+        redis_client:aioredis.Redis):
+    """
+    保存或更新消息到Redis。
+    - 如果是用户消息，则总是新增。
+    - 如果是助手消息，则更新最新的助手消息快照。
+    """
     try:
-        print("看看Message: ", message)
-        print("role: ", message.role)
-        print("content: ", message.content)
-        print("timestamp: ", message.timestamp)
-        message_data = {
-            "role": message.role,
-            "content": message.content,
-            "timestamp": message.timestamp.timestamp(),
-            "metadata": message.metadata,
-            "parts": message.parts,
-        }
-        if settings.REDIS_AVAILABLE and redis_client:
-            #键名
-            message_key = get_message_key(user_id, task_id)
+        # print("看看Message: ", message)
+        # print("role: ", message.role)
+        # print("content: ", message.content)
+        # print("timestamp: ", message.timestamp)
+        message_data = message.model_dump(mode="json")
+        message_data["timestamp"] = message.timestamp.timestamp() # 转换为时间戳
 
-            # 将消息添加到对话历史
+        message_key = get_message_key(user_id, task_id)
+
+
+        if message.role == "assistant":
+            # 尝试更新最新的消息（如果是助手消息）
+            latest_message_json = await redis_client.lindex(message_key, 0)
+            if latest_message_json:
+                latest_message = json.loads(latest_message_json)
+                if latest_message.get("role") == "assistant":
+                    # 更新现有助手消息
+                    await redis_client.lset(message_key, 0, json.dumps(message_data))
+                else:
+                    # 最新的不是助手消息，则新增
+                    await redis_client.lpush(message_key, json.dumps(message_data))
+            else:
+                # 列表为空，直接新增
+                await redis_client.lpush(message_key, json.dumps(message_data))
+        else:
+            # 用户消息总是新增
             await redis_client.lpush(message_key, json.dumps(message_data))
 
-            # 设置过期时间
-            #redis_client.expire(key, MESSAGE_EXPIRE_TIME)
+        
+        # 更新用户任务列表
+        user_task_key = get_user_task_key(user_id)
+        task_info = {
+            "task_id": task_id,
+            "task_type": task_type,
+            "conversation_id": conversation_id, # 新增
+            "last_message": message.content, # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
+            "last_timestamp": message.timestamp.timestamp()
+        }
+        await redis_client.hset(user_task_key, task_id, json.dumps(task_info))
 
-            
-            # 更新用户任务列表
-            user_task_key = get_user_task_key(user_id)
-            task_info = {
-                "task_id": task_id,
-                "task_type": task_type,
-                "conversation_id": conversation_id, # 新增
-                "last_message": message.content, # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
-                "last_timestamp": message.timestamp.timestamp()
-            }
-            await redis_client.hset(user_task_key, task_id, json.dumps(task_info))
-        else:
-            raise NotImplementedError
 
     except Exception as e:
         print(f"保存消息失败 - 用户: {user_id}, 任务: {task_id}..., 错误: {e}")
         raise
+
+# 保存对话消息 (保留旧函数以兼容，或标记为废弃)
+async def save_message_to_redis(user_id: str, task_id: str, task_type: str, conversation_id: str, message:Message, redis_client:aioredis.Redis):
+    # 为保持兼容性，此函数现在直接调用新的更新函数
+    await save_or_update_message_in_redis(user_id, task_id, task_type, conversation_id, message, redis_client)
 
 async def get_messages_history(user_id: str, task_id: str, redis_client: aioredis.Redis) -> List[Dict[str, Any]]:
     # 从Redis获取对话历史消息
