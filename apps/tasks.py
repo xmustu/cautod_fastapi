@@ -10,16 +10,22 @@ from core.authentication import get_current_active_user, User
 from database.models_1 import Tasks, Conversations
 from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem, PartData, SSEPartChunk, SSEImageChunk
 import os
-from apps.chat import save_message_to_redis, Message
+from apps.chat import save_message_to_redis, Message, save_or_update_message_in_redis, get_messages_history
 from apps.app02 import geometry_dify_api
 import time 
 import uuid
 import asyncio
+import aiofiles
 import subprocess
 import threading
 import queue
 from pathlib import Path
 import shutil
+import httpx
+from config import Settings
+
+settings = Settings()
+
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
     tags=["任务管理"]
@@ -63,6 +69,74 @@ class PendingTaskResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# 数据模型（与算法侧对应）
+class AlgorithmRequest(BaseModel):
+    task_id: str
+    conversation_id: str
+    geometry_description: str = None
+    parameters: Optional[Dict[str, Any]] = None
+
+class TaskStatus(BaseModel):
+    task_id: str
+    status: str
+    message: Optional[str] = None
+
+class HealthStatus(BaseModel):
+    status: str
+    dependencies: Dict[str, str] 
+
+# 算法服务客户端
+class AlgorithmClient:
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+        self.client = httpx.AsyncClient(base_url=base_url)
+
+    async def check_health(self) -> HealthStatus:
+        """
+        检查算法服务的健康状态。
+        返回一个 HealthStatus 实例，包含状态信息。
+        """
+        try:
+            response = await self.client.get("/health")
+            response.raise_for_status()
+            return HealthStatus(**response.json())
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Algorithm service is unavailable: {str(e)}"
+            )
+        
+    async def run_algorithm(self, request: AlgorithmRequest) -> TaskStatus:
+        """调用算法服务的运行接口"""
+        try:
+            response = await self.client.post(
+                "/run-algorithm",
+                json=request.model_dump(),
+            )
+            response.raise_for_status()
+            return TaskStatus(**response.json())
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error running algorithm: {str(e)}"
+            )
+    async def close(self):
+        """关闭 HTTP 客户端连接"""
+        await self.client.aclose()
+
+
+# # 依赖注入 - 提供算法客户端实例
+# async def get_algorithm_client():
+#     settings = Settings()
+#     client = AlgorithmClient(
+#         base_url=settings.OPTIMIZE_API_URL,
+#     )
+#     try:
+#         yield client
+#     finally:
+#         await client.close()
+
 
 # --- API 端点实现 ---
 
@@ -178,7 +252,7 @@ async def execute_task(
             content=request.query,
             timestamp=datetime.now()
         )
-        await save_message_to_redis(
+        await save_or_update_message_in_redis(
             user_id=current_user.user_id,
             task_id=request.task_id,
             task_type=request.task_type,
@@ -206,8 +280,22 @@ async def execute_task(
     if request.task_type == "geometry":
         # --- 从 app02.py 移植过来的几何建模逻辑 ---
         async def stream_generator():
+             # 初始化一个内存中的助手消息对象
+            assistant_message = Message(
+                role="assistant",
+                content="",
+                timestamp=datetime.now(),
+                parts=[],
+                metadata={},
+                status="in_progress"
+            )
             try:
-                # 首先发送会话和任务信息
+                # 1. 立即保存初始的 "in_progress" 消息
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+                # 2. 发送会话和任务信息
                 conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
@@ -232,57 +320,70 @@ async def execute_task(
                 async for chunk in geometry_dify_api(query=combinde_query):
                     # 关键：将字符串中的 \n 转义符替换为真正的换行控制字符
                     formatted_chunk = chunk.replace("\\n", "\n")
+                    assistant_message.content += chunk
+                    assistant_message.timestamp = datetime.now()
+
                     text_chunk_data = SSETextChunk(text=formatted_chunk)
                     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
                     yield sse_chunk
+
+                    await save_or_update_message_in_redis(
+                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    )
+
                     await asyncio.sleep(0.05)
                     full_answer.append(chunk)
                 
                 
 
-                # 2. 流式发送预览图
+                # 4. 流式发送预览图
                 image_parts_for_redis = []
                 preview_image_path = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\yuanbao.png"
                 if os.path.exists(preview_image_path):
-                    file_name = os.path.basename(preview_image_path)
-                    image_url = f"/files/{file_name}" # 修正：指向 /files 路由
-                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=file_name, altText="几何建模预览图")
+                    imgage_file_name = os.path.basename(preview_image_path)
+                    image_url = f"/files/{imgage_file_name}" # 修正：指向 /files 路由
+
+                    image_part = {"type": "image", "imageUrl": image_url, "fileName": file_name, "altText": "几何建模预览图"}
+                    assistant_message.parts.append(image_part)
+                    assistant_message.timestamp = datetime.now()
+
+                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=imgage_file_name, altText="几何建模预览图")
                     yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+
+                    await save_or_update_message_in_redis(
+                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    )
+
                     await asyncio.sleep(0.1)
                     
-                    image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": file_name, "altText": "几何建模预览图"})
+                    #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"})
 
-                # 3. 发送包含完整元数据的结束消息
+                # 5. 发送包含完整元数据的结束消息
+                final_metadata = GenerationMetadata(
+                    cad_file=f"{file_name}.step",
+                    code_file=f"{file_name}.py",
+                    preview_image=None
+                )
+                assistant_message.metadata = final_metadata.model_dump()
+
                 final_response_data = SSEResponse(
                     answer=''.join(full_answer),
-                    metadata=GenerationMetadata(
-                        cad_file=f"{file_name}.step",
-                        code_file=f"{file_name}.py",
-                        preview_image=None  # 置空，因为已通过 image_chunk 发送
-                    )
+                    metadata=final_metadata
                 )
                 
                 sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
                 yield sse_final
 
-                # 4. 保存结构化的助手消息到Redis
-                message = Message(
-                    role="assistant",
-                    content=''.join(full_answer),
-                    parts=image_parts_for_redis, # 保存图片信息
-                    metadata=final_response_data.metadata.model_dump(),
-                    timestamp=datetime.now()
-                )
-                await save_message_to_redis(
-                    user_id=current_user.user_id,
-                    task_id=request.task_id,
-                    task_type=request.task_type,
-                    conversation_id=request.conversation_id,
-                    message=message,
-                    redis_client=redis_client
+                # 6. 保存结构化的助手消息到Redis,最后一次更新Redis，状态为 "done"
+                assistant_message.status = "done"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                 )
 
-                # 任务成功完成，更新状态
                 task.status = "done"
                 await task.save()
 
@@ -292,6 +393,16 @@ async def execute_task(
                 await task.save()
                 # 可以选择性地记录错误日志
                 print(f"Error during task execution: {e}")
+
+                # 更新Redis中的消息状态为 "failed"
+                assistant_message.content += f"\n\n**任务执行出错**: {e}"
+                assistant_message.status = "failed"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+
                 # 向客户端发送错误事件
                 error_data = json.dumps({"error": "An error occurred during task execution."})
                 yield f'event: error\ndata: {error_data}\n\n'
@@ -300,17 +411,37 @@ async def execute_task(
 
     elif request.task_type == "retrieval":
         async def stream_generator():
+            assistant_message = Message(
+                role="assistant",
+                content="",
+                timestamp=datetime.now(),
+                parts=[],
+                metadata={},
+                status="in_progress"
+            )
             try:
-                # 1. 发送会话和任务信息
+                # 1. 立即保存初始的 "in_progress" 消息
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+
+                # 2. 发送会话信息
                 conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
                 yield f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
 
-                # 2. 发送初始文本块
+                # 3. 发送初始文本块并更新Redis
                 initial_text = "Part retrieval completed! See:"
+                assistant_message.content = initial_text
+                assistant_message.timestamp = datetime.now()
                 text_chunk_data = SSETextChunk(text=initial_text)
                 yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
                 
-                # 3. 模拟并流式发送零件数据
+                # 4. 模拟并流式发送零件数据，同时更新Redis
                 mock_parts = [
                     PartData(id=1, name="高强度齿轮", imageUrl="https://images.unsplash.com/photo-1559496447-8c6f7879e879?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D", fileName="gear_model_v1.step"),
                     PartData(id=2, name="轻量化支架", imageUrl="https://images.unsplash.com/photo-1620756243474-450c37a58759?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D", fileName="bracket_lite_v3.stl"),
@@ -318,30 +449,31 @@ async def execute_task(
                 ]
 
                 for part_data in mock_parts:
+                    part_dict = part_data.model_dump()
+                    part_dict['type'] = 'part'  # 确保每个 part 对象都有 type 字段
+                    assistant_message.parts.append(part_dict)
+                    assistant_message.timestamp = datetime.now()
+                    
                     part_chunk_data = SSEPartChunk(part=part_data)
                     yield f'event: part_chunk\ndata: {part_chunk_data.model_dump_json()}\n\n'
-                    await asyncio.sleep(0.1) # 模拟网络延迟
+                    
+                    await save_or_update_message_in_redis(
+                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    )
+                    await asyncio.sleep(0.1)
 
-                # 4. 发送结束信号 (这里我们发送一个简单的结束事件)
+                # 5. 发送结束信号
                 yield 'event: message_end\ndata: {"status": "completed"}\n\n'
 
-                # 5. 保存包含所有零件的最终消息
-                final_parts_message = Message(
-                    role="assistant",
-                    content=initial_text,
-                    parts=[part.model_dump() for part in mock_parts],
-                    timestamp=datetime.now()
-                )
-                await save_message_to_redis(
-                    user_id=current_user.user_id,
-                    task_id=request.task_id,
-                    task_type=request.task_type,
-                    conversation_id=request.conversation_id,
-                    message=final_parts_message,
-                    redis_client=redis_client
+                # 6. 最后一次更新Redis，状态为 "done"
+                assistant_message.status = "done"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                 )
 
-                # 任务成功完成，更新状态
                 task.status = "done"
                 await task.save()
 
@@ -349,35 +481,135 @@ async def execute_task(
                 task.status = "failed"
                 await task.save()
                 print(f"Error during retrieval task execution: {e}")
+
+                assistant_message.content += f"\n\n**任务执行出错**: {e}"
+                assistant_message.status = "failed"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+
                 error_data = json.dumps({"error": "An error occurred during task execution."})
                 yield f'event: error\ndata: {error_data}\n\n'
         
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
+
     elif request.task_type == "optimize":
         """
         将 swg_path 指向的单个文件复制到目录。
         如果同名文件已存在，则跳过。
+        弃用，算法测已改进
         """
-        swg_path = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\machweijfiweowef.swp"
-        if not os.path.isfile(swg_path):
-            print(f"错误：{swg_path} 不存在或不是文件")
-            return
+        # swg_path = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\machweijfiweowef.swp"
+        # if not os.path.isfile(swg_path):
+        #     print(f"错误：{swg_path} 不存在或不是文件")
+        #     return
 
-        dst_path = os.path.join(os.path.dirname(request.file_url), os.path.basename(swg_path))
+        # dst_path = os.path.join(os.path.dirname(request.file_url), os.path.basename(swg_path))
 
-        if os.path.exists(dst_path):
-            print(f"跳过：{dst_path} 已存在")
-        else:
-            shutil.copy2(swg_path, dst_path)   # copy2 保留元数据
-            print(f"已复制：{swg_path} -> {dst_path}")
+        # if os.path.exists(dst_path):
+        #     print(f"跳过：{dst_path} 已存在")
+        # else:
+        #     shutil.copy2(swg_path, dst_path)   # copy2 保留元数据
+        #     print(f"已复制：{swg_path} -> {dst_path}")
 
         async def stream_generator():
+
+            assistant_message = Message(
+                role="assistant",
+                content="",
+                timestamp=datetime.now(),
+                parts=[],
+                metadata={},
+                status="in_progress"
+            )
+
             try:
-                # 首先发送会话和任务信息
+                 # 1. 立即保存初始的 "in_progress" 消息
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+
+                # 2. 发送会话和任务信息
                 conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
+
+                # 3. 启动算法服务
+                model_path = rf"{request.file_url}" if request.file_url else r".\AutoFrame.SLDPRT"
+                request_to_algorithm = AlgorithmRequest(
+                    task_id=str(request.task_id),
+                    conversation_id = str(request.conversation_id),
+                    geometry_description="",
+                    parameters={
+                        "model_path": model_path,
+                       
+                    }
+                )
+                algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
+                # 检查算法服务健康状态
+                health_status = await algorithm_client.check_health()
+                if health_status.status != "healthy":
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Algorithm service is not healthy."
+                    )
+                # 调用算法服务执行优化任务
+                task_status = await algorithm_client.run_algorithm(request_to_algorithm)
+                task.status = task_status.status
+                await task.save()
+                
+                """
+                4.异步监控日志文件，提取指定任务的日志并生成SSE格式响应
+                 """
+                full_answer = ""
+                LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
+                if not LOG_FILE_PATH.exists():
+                    with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
+                        f.write("")  # 创建空文件
+
+                # 记录初始文件位置
+                start_position = LOG_FILE_PATH.stat().st_size
+                async with aiofiles.open(LOG_FILE_PATH, "r",encoding="utf-8") as log_file:
+
+                    await log_file.seek(start_position) 
+
+                    while True:
+                        # 1. 检查任务状态
+                        try:
+                            pass
+                        except:
+                            pass
+
+                        #2. 读取新增日志
+                        line = await log_file.readline()
+                        if line:
+                            if not line.endswith('\n'):
+                                 line += '\n'
+                            chunk = line #.replace("\\n", "\n")
+
+                            assistant_message.content += chunk
+                            assistant_message.timestamp = datetime.now()
+
+                            text_chunk_data = SSETextChunk(text=chunk)
+                            sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+
+                            await save_or_update_message_in_redis(
+                                user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                                conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                            )
+                            
+                            yield sse_chunk
+                            await asyncio.sleep(0.05)  # 控制发送速度
+                        else:
+                            # 无新内容时等待
+                            await asyncio.sleep(0.05)
+
+                            full_answer += line + "\n\n"
+
 
                 #full_answer = "已完成机械臂的轻量化设计。根据要求，在满足材料屈服强度为250MPa、安全系数为2（许用应力125MPa）的约束下，我们对机械臂进行了拓扑优化。最终，机械臂质量显著降低，且最大应力点满足安全要求。优化过程的收敛曲线图如下所示。"
 
@@ -396,91 +628,91 @@ async def execute_task(
                 # 2. 发送包含完整元数据的结束消息
                 # 1. 定义在子线程中运行的函数：读取子进程输出并放入队列
                 # ----------实际部分----------
-                output_queue = queue.Queue()  # 线程安全的队列
+                # output_queue = queue.Queue()  # 线程安全的队列
 
-                def read_subprocess_output(proc: subprocess.Popen, q: queue.Queue):
-                    """在独立线程中读取子进程输出"""
-                    # 读取stdout
-                    for line in iter(proc.stdout.readline, ''):
-                        if line:
-                            q.put(('stdout', line.strip()))
+                # def read_subprocess_output(proc: subprocess.Popen, q: queue.Queue):
+                #     """在独立线程中读取子进程输出"""
+                #     # 读取stdout
+                #     for line in iter(proc.stdout.readline, ''):
+                #         if line:
+                #             q.put(('stdout', line.strip()))
             
-                    # 读取stderr
-                    for line in iter(proc.stderr.readline, ''):
-                        if line:
-                            q.put(('stderr', line.strip()))
+                #     # 读取stderr
+                #     for line in iter(proc.stderr.readline, ''):
+                #         if line:
+                #             q.put(('stderr', line.strip()))
             
-                    proc.wait()
-                    q.put(('done', None))  # 发送结束信号
+                #     proc.wait()
+                #     q.put(('done', None))  # 发送结束信号
                 
-                env = os.environ.copy()  # 默认变量
-                env["MODEL_PATH"] = rf"{request.file_url}" if request.file_url else r"C:\Users\dell\Projects\CAutoD\wenjian\AutoFrame.SLDPRT"  # solidwork模型路径
-                print("request.file_url:", request.file_url)
-                print("request.files:" ,request.files)
-                env["PYTHONUNBUFFERED"] = "1"  # 缓冲大小
-                # 父进程中添加调试打印
+                # env = os.environ.copy()  # 默认变量
+                # env["MODEL_PATH"] = rf"{request.file_url}" if request.file_url else r"C:\Users\dell\Projects\CAutoD\wenjian\AutoFrame.SLDPRT"  # solidwork模型路径
+                # print("request.file_url:", request.file_url)
+                # print("request.files:" ,request.files)
+                # env["PYTHONUNBUFFERED"] = "1"  # 缓冲大小
+                # # 父进程中添加调试打印
 
-                command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\wenjian\sldwks.py"]
-                #command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\continue_print.py"]
-                print("执行命令:", command)
-                print("传递的MODEL_PATH:", env.get("MODEL_PATH"))
-                #print(env["MODEL_PATH"])
-                proc =  subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,          # 输出为字符串
-                    bufsize=1,          # 行缓冲
-                    universal_newlines=True,
-                    env=env
-                )
-                #print("启动程序了吗")
-                full_answer = ""
-                # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\wenjian\logdebug.txt"
-                # async with open(FILE_PATH, "rb") as f:
-                #     full_answer = await f.read().decode("utf-8")
-                # 启动读取线程
-                read_thread = threading.Thread(
-                    target=read_subprocess_output,
-                    args=(proc, output_queue),
-                    daemon=True
-                )
-                read_thread.start()
-                while True:
-                    # 非阻塞检查队列（避免阻塞事件循环）
-                    try:
-                        # 使用0.1秒超时，既保证实时性又不阻塞事件循环
-                        stream_type, line = output_queue.get(timeout=0.1)
+                # command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\wenjian\sldwks.py"]
+                # #command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\continue_print.py"]
+                # print("执行命令:", command)
+                # print("传递的MODEL_PATH:", env.get("MODEL_PATH"))
+                # #print(env["MODEL_PATH"])
+                # proc =  subprocess.Popen(
+                #     command,
+                #     stdout=subprocess.PIPE,
+                #     stderr=subprocess.PIPE,
+                #     text=True,          # 输出为字符串
+                #     bufsize=1,          # 行缓冲
+                #     universal_newlines=True,
+                #     env=env
+                # )
+                # #print("启动程序了吗")
+                # full_answer = ""
+                # # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\wenjian\logdebug.txt"
+                # # async with open(FILE_PATH, "rb") as f:
+                # #     full_answer = await f.read().decode("utf-8")
+                # # 启动读取线程
+                # read_thread = threading.Thread(
+                #     target=read_subprocess_output,
+                #     args=(proc, output_queue),
+                #     daemon=True
+                # )
+                # read_thread.start()
+                # while True:
+                #     # 非阻塞检查队列（避免阻塞事件循环）
+                #     try:
+                #         # 使用0.1秒超时，既保证实时性又不阻塞事件循环
+                #         stream_type, line = output_queue.get(timeout=0.1)
                 
-                        if stream_type == 'done':
-                            break  # 进程结束
+                #         if stream_type == 'done':
+                #             break  # 进程结束
                 
-                        if line:
-                            #print(f"[{stream_type}] {line}")
-                            # 发送到前端
-                            # 关键：将字符串中的 \n 转义符替换为真正的换行控制字符
-                            # 确保行尾有换行符
-                            if not line.endswith('\n'):
-                                line += '\n'
-                            chunk = line.replace("\\n", "\n")
-                            text_chunk_data = SSETextChunk(text=chunk)
-                            sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-                            yield sse_chunk
-                            await asyncio.sleep(0.05)  # 控制发送速度
+                #         if line:
+                #             #print(f"[{stream_type}] {line}")
+                #             # 发送到前端
+                #             # 关键：将字符串中的 \n 转义符替换为真正的换行控制字符
+                #             # 确保行尾有换行符
+                #             if not line.endswith('\n'):
+                #                 line += '\n'
+                #             chunk = line.replace("\\n", "\n")
+                #             text_chunk_data = SSETextChunk(text=chunk)
+                #             sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                #             yield sse_chunk
+                #             await asyncio.sleep(0.05)  # 控制发送速度
                     
-                            # 积累完整回答
-                            if stream_type == 'stdout':
-                                full_answer += line + "\n\n"
-                            else:  # stderr
-                                full_answer += f"[错误] {line}\n\n"
+                #             # 积累完整回答
+                #             if stream_type == 'stdout':
+                #                 full_answer += line + "\n\n"
+                #             else:  # stderr
+                #                 full_answer += f"[错误] {line}\n\n"
                 
-                        output_queue.task_done()
+                #         output_queue.task_done()
             
-                    except queue.Empty:
-                    # 队列空时检查进程是否已意外终止
-                        if proc.poll() is not None and not read_thread.is_alive():
-                            break
-                        continue
+                #     except queue.Empty:
+                #     # 队列空时检查进程是否已意外终止
+                #         if proc.poll() is not None and not read_thread.is_alive():
+                #             break
+                #         continue
                 # ----------实际部分----------
 
                 #     line = proc.stdout.readline().strip()
@@ -502,7 +734,7 @@ async def execute_task(
                 #     yield sse_chunk
                 #     await asyncio.sleep(0.05)
                 
-                # --- 采用新的图片流式方案 ---
+                # 5. 采用新的图片流式方案并更新Redis
                 mock_images = [
                     {"path": r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\convergence_curve.png", "alt": "收敛曲线"},
                     {"path": r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\parameter_distribution.png", "alt": "参数分布图"}
@@ -511,56 +743,56 @@ async def execute_task(
                 image_parts_for_redis = []
                 for img_data in mock_images:
                     if os.path.exists(img_data["path"]):
-                        file_name = os.path.basename(img_data["path"])
-                        image_url = f"/files/{file_name}" # 修正：指向 /files 路由
+                        image_file_name = os.path.basename(img_data["path"])
+                        image_url = f"/files/{image_file_name}" # 修正：指向 /files 路由
                         
+                        image_part = {"type": "image", "imageUrl": image_url, "fileName": file_name, "altText": img_data["alt"]}
+                        assistant_message.parts.append(image_part)
+                        assistant_message.timestamp = datetime.now()
+
                         # 调试：打印实际的文件路径
                         current_file_dir = os.path.dirname(os.path.abspath(__file__))
                         project_root = os.path.dirname(current_file_dir)
                         base_dir = os.path.join(project_root, "files")
-                        safe_path = os.path.abspath(os.path.join(base_dir, file_name))
+                        safe_path = os.path.abspath(os.path.join(base_dir, image_file_name))
                         print(f"Attempting to serve image from: {safe_path}")
 
                         # 使用 SSEImageChunk 发送图片信息
-                        image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=file_name, altText=img_data["alt"])
+                        image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=image_file_name, altText=img_data["alt"])
                         yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+
+                        await save_or_update_message_in_redis(
+                            user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                            conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                        )
+
                         await asyncio.sleep(0.1) # 恢复延迟
                         
                         # 准备存入Redis的数据
-                        image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": file_name, "altText": img_data["alt"]})
+                        #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": img_data["alt"]})
 
+                # 6. 发送结束消息
+                final_metadata = GenerationMetadata(
+                    cad_file="model.step",
+                    code_file="script.py",
+                    preview_image=None
+                )
                 final_response_data = SSEResponse(
                     answer=full_answer,
-                    metadata=GenerationMetadata(
-                        # 提供所有必需的字段，并确保格式正确
-                        cad_file="model.step",
-                        code_file="script.py",
-                        preview_image=None
-                    )
+                    metadata=final_metadata
                 )
                 
                 sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
                 yield sse_final
 
-                # 3. 保存结构化的助手消息到Redis
-                message = Message(
-                    role="assistant",
-                    content=full_answer,
-                    # 将图片信息也存入 message
-                    parts=image_parts_for_redis, 
-                    metadata=final_response_data.metadata.model_dump(),
-                    timestamp=datetime.now()
-                )
-                await save_message_to_redis(
-                    user_id=current_user.user_id,
-                    task_id=request.task_id,
-                    task_type=request.task_type,
-                    conversation_id=request.conversation_id,
-                    message=message,
-                    redis_client=redis_client
+                 # 7. 最后一次更新Redis，状态为 "done"
+                assistant_message.status = "done"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                 )
 
-                # 任务成功完成，更新状态
                 task.status = "done"
                 await task.save()
 
@@ -568,6 +800,15 @@ async def execute_task(
                 task.status = "failed"
                 await task.save()
                 print(f"Error during optimization task execution: {e}")
+
+                assistant_message.content += f"\n\n**任务执行出错**: {e}"
+                assistant_message.status = "failed"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+
                 error_data = json.dumps({"error": "An error occurred during task execution."})
                 yield f'event: error\ndata: {error_data}\n\n'
 
