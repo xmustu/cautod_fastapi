@@ -47,7 +47,9 @@ async def save_or_update_message_in_redis(
         task_type: str, 
         conversation_id: str, 
         message:Message, 
-        redis_client:aioredis.Redis):
+        redis_client:aioredis.Redis,
+        dify_chat_conversation_id: Optional[str] = None
+        ):
     """
     保存或更新消息到Redis。
     - 如果是用户消息，则总是新增。
@@ -89,6 +91,7 @@ async def save_or_update_message_in_redis(
             "task_id": task_id,
             "task_type": task_type,
             "conversation_id": conversation_id, # 新增
+            "dify_chat_conversation_id": "", # dify chat-message 会话 ID 需要基于之前的聊天记录继续对话，必须传之前消息的 conversation_id
             "last_message": message.content, # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
             "last_timestamp": message.timestamp.timestamp()
         }

@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, AsyncGenerator, Union
+from typing import Optional, Dict, List, AsyncGenerator, Union, List, Literal,Any
 
 from fastapi import APIRouter
 from fastapi import HTTPException
@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import validator, field_validator
 from pydantic import ValidationError
+from pydantic import HttpUrl
 from fastapi import Depends
 import uuid
 from datetime import datetime
@@ -22,10 +23,253 @@ import asyncio
 import json 
 import http.client
 import json
+import httpx
 import os
+import aiohttp
+import redis.asyncio as aioredis
 from pathlib import Path
+from config import Settings
+
+settings = Settings()
+
 geometry = APIRouter()
 
+# 请求模型
+class FileItem(BaseModel):
+    type: str = Field(..., description="文件类型（如 'image'）")
+    transfer_method: str = Field(..., description="文件传输方式（如 'remote_url'）") 
+    url: str = Field(..., description="文件访问 URL") # 仅当传递方式为 remote_url 时
+
+class MessageRequest(BaseModel):
+    inputs: object
+    query: str
+    response_mode: Optional[str] = "streaming"  # 目前仅支持 streaming
+    conversation_id: Optional[str] = None
+    user: Optional[str] = "abc-123"  # 用户标识符
+    files: Optional[List[FileItem]] = None
+    auto_generate_name: Optional[bool] = False
+
+# 响应模型
+# ------------------ 各事件体 ------------------
+class MessageChunk(BaseModel):
+    event: Literal["message"]
+    task_id: str
+    message_id: str
+    conversation_id: str
+    answer: str
+    created_at: int
+
+class MessageFileChunk(BaseModel):
+    event: Literal["message_file"]
+    id: str
+    type: Literal["image"]
+    belongs_to: Literal["assistant"]
+    url: str
+    conversation_id: str
+
+class MessageEndChunk(BaseModel):
+    event: Literal["message_end"]
+    task_id: str
+    message_id: str
+    conversation_id: str
+    metadata: dict
+
+# class TTSMessageChunk(BaseModel):
+#     event: Literal["tts_message"]
+#     task_id: str
+#     message_id: str
+#     audio: str  # base64 mp3
+#     created_at: int
+
+# class TTSMessageEndChunk(BaseModel):
+#     event: Literal["tts_message_end"]
+#     task_id: str
+#     message_id: str
+#     audio: str = ""  # empty
+#     created_at: int
+
+class MessageReplaceChunk(BaseModel):
+    event: Literal["message_replace"]
+    task_id: str
+    message_id: str
+    conversation_id: str
+    answer: str
+    created_at: int
+
+class WorkflowStartedChunk(BaseModel):
+    event: Literal["workflow_started"]
+    task_id: str
+    workflow_run_id: str
+    data: dict
+
+class NodeStartedChunk(BaseModel):
+    event: Literal["node_started"]
+    task_id: str
+    workflow_run_id: str
+    data: dict
+
+class NodeFinishedChunk(BaseModel):
+    event: Literal["node_finished"]
+    task_id: str
+    workflow_run_id: str
+    data: dict
+
+class WorkflowFinishedChunk(BaseModel):
+    event: Literal["workflow_finished"]
+    task_id: str
+    workflow_run_id: str
+    data: dict
+
+class ErrorChunk(BaseModel):
+    event: Literal["error"]
+    task_id: str
+    message_id: str
+    status: int
+    code: str
+    message: str
+
+class PingChunk(BaseModel):
+    event: Literal["ping"]
+
+# ------------------ 联合模型 ------------------
+StreamChunk = Union[
+    MessageChunk,
+    MessageFileChunk,
+    MessageEndChunk,
+    # TTSMessageChunk,
+    # TTSMessageEndChunk,
+    MessageReplaceChunk,
+    WorkflowStartedChunk,
+    NodeStartedChunk,
+    NodeFinishedChunk,
+    WorkflowFinishedChunk,
+    ErrorChunk,
+    PingChunk,
+]
+
+class ChunkChatCompletionResponse(BaseModel):
+    """SSE 流式块"""
+    chunk: StreamChunk
+
+
+
+
+
+# 依赖项：获取Dify API客户端
+async def get_dify_client():
+    async with httpx.AsyncClient(base_url=settings.DIFY_API_BASE_URL) as client:
+        client.headers.update({
+            "Authorization": f"Bearer {settings.DIFY_API_KEY}",
+            "Content-Type": "application/json"
+        })
+        yield client
+
+# dift 客户端
+class DifyClient:
+    def __init__(self,api_key: str, base_url: str, user_id: int, task_id: int,redis_client:aioredis.Redis,):
+        self.api_key = api_key
+        self.base_url = base_url
+        self.user_id = user_id
+        self.task_id = task_id
+        self.redis = redis_client
+        self.headers =  {
+            'Authorization': f"Bearer {self.api_key}",
+            'Content-Type': 'application/json',
+            'Accept': '*/*',
+            'Host': 'localhost',
+            'Connection': 'keep-alive'
+        }
+
+    async def chat_stream(self, request: MessageRequest):
+        """发送聊天请求并处理流式响应"""
+        #print("request: ",request.model_dump())
+        url = f"{self.base_url}/v1/chat-messages"
+        payload = json.dumps(request.model_dump())
+
+        # 如果没有提供会话ID，则在接下来记住会话ID
+        FLAG = False
+        if request.conversation_id is None:
+            FLAG = True
+        #print("请求的URL:", url)  # Debug log
+        #print("请求的payload:", payload)  # Debug log
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, data=payload, headers=self.headers) as response:
+                #print("响应状态码:", response.status)  # Debug log
+                if response.status != 200:
+                    error_detail = await response.text()
+                    raise HTTPException(
+                        status_code=response.status, 
+                        detail=f"Dify API error: {error_detail}"
+                    )
+                # 处理流式响应
+                async for line in response.content:
+                    
+                    # 处理SSE格式 (data: ...)
+                    line = line.decode('utf-8').strip()
+                    if not line:
+                        continue 
+                    if line.startswith('data: '):
+                        data_str = line[len('data: '):]
+
+
+                    try:
+                        data = json.loads(data_str)
+                        # 根据event类型解析为对应的模型
+                        #chunk = self._parse_chunk(data)
+                        if FLAG:
+                            self.add_conversation_id(data["conversation_id"])
+                            FLAG = False
+                        if data["event"] == "message":
+                            if "answer" in data:
+                                #text_chunk = SSETextChunk(event="text_chunk", text=chunk.answer)
+                                #sse_chunk = f'event: text_chunk\ndata: {text_chunk.model_dump_json()}\n\n'
+                                yield data["answer"]
+                    except Exception as e:
+                         #yield f"event: error\ndata: {'message': f'解析响应失败: {str(e)}'}\n\n"
+                        yield f"解析响应失败: {str(e)}"
+                    await asyncio.sleep(0.05)
+
+    async def add_conversation_id(self,conversation_id: str):
+
+        def get_user_task_key(user_id: str) -> str:
+            """获取用户任务列表在Redis中的键名"""
+            return f"user_tasks:{user_id}"
+
+        user_task_key = get_user_task_key(self.user_id)
+        task_json = await self.redis.hget(user_task_key, self.task_id)
+        if task_json is None:
+            raise RuntimeError("task not found")
+
+        task_info = json.loads(task_json)
+        task_info["dify_chat_conversation_id"] = conversation_id   # 这里修改
+
+        await self.redis.hset(user_task_key, self.task_id, json.dumps(task_info))
+
+
+    # 解析不同类型的SSE事件
+    def _parse_chunk(self, data: Dict[str, Any]) -> StreamChunk:
+        """根据event类型解析数据到对应的模型"""
+        event_type = data.get('event')
+        print("解析的事件类型:", event_type)  # Debug log
+        chunk_map = {
+            'message': MessageChunk,
+            'message_file': MessageFileChunk,
+            'message_end': MessageEndChunk,
+            'message_replace': MessageReplaceChunk,
+            'workflow_started': WorkflowStartedChunk,
+            'node_started': NodeStartedChunk,
+            'node_finished': NodeFinishedChunk,
+            'workflow_finished': WorkflowFinishedChunk,
+            'error': ErrorChunk,
+            'ping': PingChunk
+        }
+        
+        chunk_class = chunk_map.get(event_type)
+        if not chunk_class:
+            raise ValueError(f"未知的事件类型: {event_type}")
+        print("解析的事件数据:", chunk_class(**data))  # Debug log
+        return chunk_class(**data)
+    
 
 # 调用dify的API进行几何建模
 async def geometry_dify_api(query: str) -> AsyncGenerator:
@@ -101,10 +345,7 @@ class ConversationResponse(BaseModel):
     class Config:
         from_attributes = True # Pydantic V2, or orm_mode = True for V1
 
-class FileItem(BaseModel):
-    type: str = Field(..., description="文件类型（如 'image'）")
-    transfer_method: str = Field(..., description="文件传输方式（如 'remote_url'）")
-    url: str = Field(..., description="文件访问 URL")
+
 
 
 # 响应模型

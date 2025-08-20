@@ -17,3 +17,5 @@ httpx
 Jinja2
 redis
 tomlkit
+aiofiles
+aiohttp

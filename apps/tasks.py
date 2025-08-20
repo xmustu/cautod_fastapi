@@ -8,10 +8,10 @@ from datetime import datetime
 
 from core.authentication import get_current_active_user, User
 from database.models_1 import Tasks, Conversations
-from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem, PartData, SSEPartChunk, SSEImageChunk
+from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem, PartData, SSEPartChunk, SSEImageChunk, MessageRequest
 import os
 from apps.chat import save_message_to_redis, Message, save_or_update_message_in_redis, get_messages_history
-from apps.app02 import geometry_dify_api
+from apps.app02 import geometry_dify_api, DifyClient
 import time 
 import uuid
 import asyncio
@@ -315,9 +315,40 @@ async def execute_task(
 
 
 
+                # 3. 连接dify chat-messsage, 处理流式回复
+                client = DifyClient(
+                    api_key=settings.DIFY_API_KEY,
+                    base_url=settings.DIFY_API_BASE_URL,
+                    user_id=current_user.user_id, 
+                    task_id=request.task_id,
+                    redis_client=redis_client
+                    )
+                
+                # 取 dify chat-message 的
+                def get_user_task_key(user_id: str) -> str:
+                    """获取用户任务列表在Redis中的键名"""
+                    return f"user_tasks:{user_id}"
+                user_task_key = get_user_task_key(current_user.user_id)
+                task_json = await redis_client.hget(user_task_key, request.task_id)
+                if task_json is None:
+                    raise RuntimeError("task not found")
+
+                task_info = json.loads(task_json)
+                dify_chat_conversation_id = task_info["dify_chat_conversation_id"]  # 这里修改
+
+
+                dify_request = MessageRequest(
+                    inputs={},
+                    query=combinde_query,
+                    response_mode= "streaming",
+                    conversation_id=dify_chat_conversation_id,
+                    #files= [],
+                    #auto_generate_name= True,  # 自动生成文件名
+                )
+
                 
                 full_answer = []
-                async for chunk in geometry_dify_api(query=combinde_query):
+                async for chunk in client.chat_stream(dify_request):
                     # 关键：将字符串中的 \n 转义符替换为真正的换行控制字符
                     formatted_chunk = chunk.replace("\\n", "\n")
                     assistant_message.content += chunk
@@ -325,8 +356,10 @@ async def execute_task(
 
                     text_chunk_data = SSETextChunk(text=formatted_chunk)
                     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                    
                     yield sse_chunk
-
+                    with Path("test.txt").open("a", encoding="utf-8") as f:
+                        f.write(json.dumps(chunk, ensure_ascii=False) + "\n")
                     await save_or_update_message_in_redis(
                         user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
                         conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
