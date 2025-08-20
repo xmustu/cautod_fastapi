@@ -773,7 +773,7 @@ async def execute_task(
 
                 # 6. 发送结束消息
                 final_metadata = GenerationMetadata(
-                    cad_file="model.step",
+                    cad_file=request.file_url,
                     code_file="script.py",
                     preview_image=None
                 )
