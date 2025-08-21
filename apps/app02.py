@@ -165,6 +165,7 @@ class DifyClient:
         self.base_url = base_url
         self.task_id = task_id
         self.task_instance = task_instance  # 任务实例
+        self.last_message_id = None
         self.headers =  {
             'Authorization': f"Bearer {self.api_key}",
             'Content-Type': 'application/json',
@@ -206,10 +207,11 @@ class DifyClient:
                         #chunk = self._parse_chunk(data)
                         if FLAG:
                             FLAG = False
-                            print("进来了")
+
                             await self.add_conversation_id(data["conversation_id"])
+                            self.last_message_id = data["message_id"]
                             FLAG = False
-                            print("除去啦")
+
                         if data["event"] == "message":
                             if "answer" in data:
                                 #text_chunk = SSETextChunk(event="text_chunk", text=chunk.answer)
@@ -219,11 +221,29 @@ class DifyClient:
                          #yield f"event: error\ndata: {'message': f'解析响应失败: {str(e)}'}\n\n"
                         yield f"解析响应失败: {str(e)}"
                     #await asyncio.sleep(0.05)
-
+        await self.Next_Suggested_Questions()
     async def add_conversation_id(self,conversation_id: str):
         
         self.task_instance.dify_conversation_id = conversation_id  # 更新任务的Dify会话ID
         await self.task_instance.save()
+
+
+    async def Next_Suggested_Questions(self):
+        print("获取下一步建议问题...")  # Debug log
+        url = f"{self.base_url}/v1/messages/{self.last_message_id}/suggested?user=abc-123"
+        print("建议问题URL:", url)  # Debug log
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url, 
+                headers={
+                    'Authorization': self.headers["Authorization"],
+                    'Content-Type': 'application/json',
+
+                }
+            )
+
+            print("建议响应:", response.json()["data"])  # Debug log
+            return response.json()["data"]
 
 
     """疑似有bug"""
@@ -368,6 +388,7 @@ class SSETextChunk(BaseModel):
 class SSEResponse(BaseModel):
     event: str = "message_end"
     answer: str  #输出描述文本
+    suggested_questions: Optional[List[str]] = None  # 新增：建议问题列表
     metadata: GenerationMetadata
 
 # --- 新增：用于零件检索的SSE模型 ---

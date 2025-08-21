@@ -350,6 +350,8 @@ async def execute_task(
 
                     #await asyncio.sleep(0.05)
                     full_answer.append(chunk)
+                # 获取建议问题
+                suggested_questions = client.Next_Suggested_Questions()
 
                 # 4. 流式发送预览图
                 image_parts_for_redis = []
@@ -384,6 +386,7 @@ async def execute_task(
 
                 final_response_data = SSEResponse(
                     answer=''.join(full_answer),
+                    suggested_questions=suggested_questions,
                     metadata=final_metadata
                 )
                 
