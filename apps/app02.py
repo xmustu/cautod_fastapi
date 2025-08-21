@@ -346,7 +346,10 @@ class ConversationResponse(BaseModel):
     class Config:
         from_attributes = True # Pydantic V2, or orm_mode = True for V1
 
-
+# ---下一轮建议问题的模型-----
+class SuggestedQuestionsResponse(BaseModel):
+    result: str
+    data: List[str]
 
 
 # 响应模型
@@ -388,7 +391,7 @@ class SSETextChunk(BaseModel):
 class SSEResponse(BaseModel):
     event: str = "message_end"
     answer: str  #输出描述文本
-    suggested_questions: Optional[List[str]] = None  # 新增：建议问题列表
+    suggested_questions: Optional[SuggestedQuestionsResponse] = None  # 新增：建议问题列表
     metadata: GenerationMetadata
 
 # --- 新增：用于零件检索的SSE模型 ---
@@ -410,6 +413,7 @@ class SSEImageChunk(BaseModel):
     imageUrl: str
     fileName: str
     altText: Optional[str] = None
+
 
 
 # 创建新会话的接口

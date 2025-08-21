@@ -53,7 +53,6 @@ class OptimizationParamsRequest(BaseModel):
     task_id: int = Field(..., description="任务ID")
     params: Dict[str, Dict[str, float]] = Field(..., description="优化参数及其范围，例如 {'param1': {'min': 0.1, 'max': 1.0}}")
 
-
 # 数据模型（与算法侧对应）
 class AlgorithmRequest(BaseModel):
     task_id: str
