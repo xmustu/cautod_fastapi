@@ -83,7 +83,6 @@ async def save_or_update_message_in_redis(
         
         # 更新用户任务列表
         user_task_key = get_user_task_key(user_id)
-        task_json = await redis_client.hget(user_task_key, task_id)
         task_info = {
             "task_id": task_id,
             "task_type": task_type,

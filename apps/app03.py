@@ -9,8 +9,8 @@ from pydantic import  field_validator
 
 from core.authentication import authenticate
 
-
-
+import httpx
+from fastapi import status, HTTPException
 optimize = APIRouter()
 
 @optimize.get("")
@@ -46,6 +46,30 @@ class OptimizeResult(BaseModel):
     final_stress: float = Field(..., description="优化后CAD模型的应力值")
     unit: UnitInfo = Field(..., description="单位说明")
     constraint_satisfied: bool = Field(..., description="是否满足约束条件")
+
+class OptimizationParamsRequest(BaseModel):
+    """接收优化参数的请求体模型"""
+    conversation_id: str = Field(..., description="任务所属的对话ID")
+    task_id: int = Field(..., description="任务ID")
+    params: Dict[str, Dict[str, float]] = Field(..., description="优化参数及其范围，例如 {'param1': {'min': 0.1, 'max': 1.0}}")
+
+
+# 数据模型（与算法侧对应）
+class AlgorithmRequest(BaseModel):
+    task_id: str
+    conversation_id: str
+    geometry_description: str = None
+    parameters: Optional[Dict[str, Any]] = None
+
+class TaskStatus(BaseModel):
+    task_id: str
+    status: str
+    message: Optional[str] = None
+
+class HealthStatus(BaseModel):
+    status: str
+    dependencies: Dict[str, str] 
+
 
 
 # 设计优化接口
@@ -85,3 +109,60 @@ async def optimize_design(
     return optimization_stream()
 
 
+# 算法服务客户端
+class AlgorithmClient:
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+        self.client = httpx.AsyncClient(base_url=base_url)
+
+    async def check_health(self) -> HealthStatus:
+        """
+        检查算法服务的健康状态。
+        返回一个 HealthStatus 实例，包含状态信息。
+        """
+        try:
+            response = await self.client.get("/health")
+            response.raise_for_status()
+            return HealthStatus(**response.json())
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Algorithm service is unavailable: {str(e)}"
+            )
+        
+    async def run_algorithm(self, request: AlgorithmRequest) -> TaskStatus:
+        """调用算法服务的运行接口"""
+        try:
+            response = await self.client.post(
+                "/run-algorithm",
+                json=request.model_dump(),
+            )
+            response.raise_for_status()
+            return TaskStatus(**response.json())
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error running algorithm: {str(e)}"
+            )
+        
+    async def send_parameter(self, model_path: str,param: dict):
+        """发送优化参数到算法服务"""
+        try:
+
+            with open(rf"{model_path}\parametes.txt", "w", encoding="utf-8") as f:
+                f.write(str(param))
+
+            response = await self.client.post(
+                "/sent_parameter",
+                params={"model_path": model_path}
+            )
+            return response.json()
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Error sending parameters: {str(e)}"
+            )
+        
+    async def close(self):
+        """关闭 HTTP 客户端连接"""
+        await self.client.aclose()

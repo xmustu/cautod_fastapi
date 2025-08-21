@@ -359,8 +359,8 @@ class GenerationMetadata(BaseModel):
     @field_validator('cad_file')
     def validate_cad_file(cls, v):
         # 验证文件扩展名
-        if not v.lower().endswith('.step'):
-            raise ValueError('CAD文件必须是.step格式')
+        if not v.lower().endswith('.step') and not v.lower().endswith('.sldprt'):
+            raise ValueError('CAD文件必须是.step或者.sldprt格式')
         return v
 
     @field_validator('code_file')

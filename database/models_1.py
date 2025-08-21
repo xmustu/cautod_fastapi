@@ -39,7 +39,7 @@ class Conversations(Model):
 
 # 任务模型
 class Tasks(Model):
-    task_id = fields.IntField(pk=True)
+    task_id = fields.IntField(pk=True, auto_increment=True)
     conversation = fields.ForeignKeyField(
         "models.Conversations", related_name="tasks", to_field="conversation_id", on_delete=fields.CASCADE
     )
@@ -67,7 +67,7 @@ class Tasks(Model):
 
 # 几何建模结果模型
 class GeometryResults(Model):
-    geometry_id = fields.IntField(pk=True)
+    geometry_id = fields.IntField(pk=True, auto_increment=True)
     task_id = fields.IntField()
     cad_file_path = fields.TextField(null=True)
     code_file_path = fields.TextField(null=True)
@@ -84,7 +84,7 @@ class GeometryResults(Model):
 
 # 优化结果模型
 class OptimizationResults(Model):
-    optimization_id = fields.IntField(pk=True)
+    optimization_id = fields.IntField(pk=True, auto_increment=True)
     task_id = fields.IntField()
     optimized_cad_file_path = fields.TextField(null=True)
     best_params = fields.JSONField(null=True)
