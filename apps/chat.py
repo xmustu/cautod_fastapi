@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from fastapi.responses import StreamingResponse
 import asyncio
@@ -8,8 +8,8 @@ import json
 
 import redis.asyncio as aioredis
 from core.authentication import get_current_active_user, User
-from database.models_1 import Tasks, Conversations
-from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem
+from database.models_1 import Tasks
+from apps.app02 import SSETextChunk, SSEResponse
 
 
 from config import Settings
@@ -47,8 +47,7 @@ async def save_or_update_message_in_redis(
         task_type: str, 
         conversation_id: str, 
         message:Message, 
-        redis_client:aioredis.Redis,
-        dify_chat_conversation_id: Optional[str] = None
+        redis_client:aioredis.Redis
         ):
     """
     保存或更新消息到Redis。
@@ -56,10 +55,7 @@ async def save_or_update_message_in_redis(
     - 如果是助手消息，则更新最新的助手消息快照。
     """
     try:
-        # print("看看Message: ", message)
-        # print("role: ", message.role)
-        # print("content: ", message.content)
-        # print("timestamp: ", message.timestamp)
+
         message_data = message.model_dump(mode="json")
         message_data["timestamp"] = message.timestamp.timestamp() # 转换为时间戳
 
@@ -87,11 +83,11 @@ async def save_or_update_message_in_redis(
         
         # 更新用户任务列表
         user_task_key = get_user_task_key(user_id)
+        task_json = await redis_client.hget(user_task_key, task_id)
         task_info = {
             "task_id": task_id,
             "task_type": task_type,
             "conversation_id": conversation_id, # 新增
-            "dify_chat_conversation_id": "", # dify chat-message 会话 ID 需要基于之前的聊天记录继续对话，必须传之前消息的 conversation_id
             "last_message": message.content, # message.content[:settings.MAX_MESSAGE_LENGTH] + "..." if len(message.content) > settings.MAX_MESSAGE_LENGTH else message.content,
             "last_timestamp": message.timestamp.timestamp()
         }

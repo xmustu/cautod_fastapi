@@ -7,12 +7,11 @@ from fastapi import Header
 from pydantic import BaseModel
 from pydantic import Field
 from fastapi import Form
-from pydantic import validator, field_validator
+from pydantic import  field_validator
 
 from core.authentication import authenticate
 
-import asyncio
-import json 
+
 
 optimize = APIRouter()
 

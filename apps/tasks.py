@@ -10,15 +10,13 @@ from core.authentication import get_current_active_user, User
 from database.models_1 import Tasks, Conversations
 from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SSEResponse, FileItem, PartData, SSEPartChunk, SSEImageChunk, MessageRequest
 import os
-from apps.chat import save_message_to_redis, Message, save_or_update_message_in_redis, get_messages_history
-from apps.app02 import geometry_dify_api, DifyClient
+from apps.chat import save_message_to_redis, Message, save_or_update_message_in_redis
+from apps.app02 import  DifyClient
 import time 
 import uuid
 import asyncio
 import aiofiles
-import subprocess
-import threading
-import queue
+
 from pathlib import Path
 import shutil
 import httpx
@@ -194,10 +192,11 @@ async def create_task(
         conversation_id=task_data.conversation_id,
         user_id=current_user.user_id,
         task_type=task_data.task_type,
-        status="pending" # 初始状态
+        status="pending", # 初始状态
+        #dift_conversation_id="", # 初始为空，后续可更新
         # 'details' 字段在 Tasks 模型中不存在，因此不直接保存
     )
-    
+    print("---------------这是一次创建啊任务------------------")
     # 创建任务的文件存放目录
     # 获取当前目录的上一级目录
     parent_dir = Path(os.getcwd())
@@ -319,29 +318,15 @@ async def execute_task(
                 client = DifyClient(
                     api_key=settings.DIFY_API_KEY,
                     base_url=settings.DIFY_API_BASE_URL,
-                    user_id=current_user.user_id, 
                     task_id=request.task_id,
-                    redis_client=redis_client
+                    task_instance = task
                     )
                 
-                # 取 dify chat-message 的
-                def get_user_task_key(user_id: str) -> str:
-                    """获取用户任务列表在Redis中的键名"""
-                    return f"user_tasks:{user_id}"
-                user_task_key = get_user_task_key(current_user.user_id)
-                task_json = await redis_client.hget(user_task_key, request.task_id)
-                if task_json is None:
-                    raise RuntimeError("task not found")
-
-                task_info = json.loads(task_json)
-                dify_chat_conversation_id = task_info["dify_chat_conversation_id"]  # 这里修改
-
-
                 dify_request = MessageRequest(
                     inputs={},
                     query=combinde_query,
                     response_mode= "streaming",
-                    conversation_id=dify_chat_conversation_id,
+                    conversation_id=task.dify_conversation_id,
                     #files= [],
                     #auto_generate_name= True,  # 自动生成文件名
                 )
@@ -358,17 +343,13 @@ async def execute_task(
                     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
                     
                     yield sse_chunk
-                    with Path("test.txt").open("a", encoding="utf-8") as f:
-                        f.write(json.dumps(chunk, ensure_ascii=False) + "\n")
                     await save_or_update_message_in_redis(
                         user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
                         conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                     )
 
-                    await asyncio.sleep(0.05)
+                    #await asyncio.sleep(0.05)
                     full_answer.append(chunk)
-                
-                
 
                 # 4. 流式发送预览图
                 image_parts_for_redis = []
@@ -644,129 +625,6 @@ async def execute_task(
                             full_answer += line + "\n\n"
 
 
-                #full_answer = "已完成机械臂的轻量化设计。根据要求，在满足材料屈服强度为250MPa、安全系数为2（许用应力125MPa）的约束下，我们对机械臂进行了拓扑优化。最终，机械臂质量显著降低，且最大应力点满足安全要求。优化过程的收敛曲线图如下所示。"
-
-                # 前端测试案例
-                # 1. 模拟流式发送文本块
-                # full_answer = ""
-                # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\test_example.txt"
-                # with open(FILE_PATH, "rb") as f:
-                #     full_answer = f.read().decode("utf-8")
-                # for i in range(0, len(full_answer), 5):
-                #     chunk = full_answer[i:i+5]
-                #     text_chunk_data = SSETextChunk(text=chunk)
-                #     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-                #     yield sse_chunk
-                #     await asyncio.sleep(0.05)
-                # 2. 发送包含完整元数据的结束消息
-                # 1. 定义在子线程中运行的函数：读取子进程输出并放入队列
-                # ----------实际部分----------
-                # output_queue = queue.Queue()  # 线程安全的队列
-
-                # def read_subprocess_output(proc: subprocess.Popen, q: queue.Queue):
-                #     """在独立线程中读取子进程输出"""
-                #     # 读取stdout
-                #     for line in iter(proc.stdout.readline, ''):
-                #         if line:
-                #             q.put(('stdout', line.strip()))
-            
-                #     # 读取stderr
-                #     for line in iter(proc.stderr.readline, ''):
-                #         if line:
-                #             q.put(('stderr', line.strip()))
-            
-                #     proc.wait()
-                #     q.put(('done', None))  # 发送结束信号
-                
-                # env = os.environ.copy()  # 默认变量
-                # env["MODEL_PATH"] = rf"{request.file_url}" if request.file_url else r"C:\Users\dell\Projects\CAutoD\wenjian\AutoFrame.SLDPRT"  # solidwork模型路径
-                # print("request.file_url:", request.file_url)
-                # print("request.files:" ,request.files)
-                # env["PYTHONUNBUFFERED"] = "1"  # 缓冲大小
-                # # 父进程中添加调试打印
-
-                # command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\wenjian\sldwks.py"]
-                # #command = [r"C:\Users\dell\anaconda3\envs\sld\python.exe", r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\test_f\continue_print.py"]
-                # print("执行命令:", command)
-                # print("传递的MODEL_PATH:", env.get("MODEL_PATH"))
-                # #print(env["MODEL_PATH"])
-                # proc =  subprocess.Popen(
-                #     command,
-                #     stdout=subprocess.PIPE,
-                #     stderr=subprocess.PIPE,
-                #     text=True,          # 输出为字符串
-                #     bufsize=1,          # 行缓冲
-                #     universal_newlines=True,
-                #     env=env
-                # )
-                # #print("启动程序了吗")
-                # full_answer = ""
-                # # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\wenjian\logdebug.txt"
-                # # async with open(FILE_PATH, "rb") as f:
-                # #     full_answer = await f.read().decode("utf-8")
-                # # 启动读取线程
-                # read_thread = threading.Thread(
-                #     target=read_subprocess_output,
-                #     args=(proc, output_queue),
-                #     daemon=True
-                # )
-                # read_thread.start()
-                # while True:
-                #     # 非阻塞检查队列（避免阻塞事件循环）
-                #     try:
-                #         # 使用0.1秒超时，既保证实时性又不阻塞事件循环
-                #         stream_type, line = output_queue.get(timeout=0.1)
-                
-                #         if stream_type == 'done':
-                #             break  # 进程结束
-                
-                #         if line:
-                #             #print(f"[{stream_type}] {line}")
-                #             # 发送到前端
-                #             # 关键：将字符串中的 \n 转义符替换为真正的换行控制字符
-                #             # 确保行尾有换行符
-                #             if not line.endswith('\n'):
-                #                 line += '\n'
-                #             chunk = line.replace("\\n", "\n")
-                #             text_chunk_data = SSETextChunk(text=chunk)
-                #             sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-                #             yield sse_chunk
-                #             await asyncio.sleep(0.05)  # 控制发送速度
-                    
-                #             # 积累完整回答
-                #             if stream_type == 'stdout':
-                #                 full_answer += line + "\n\n"
-                #             else:  # stderr
-                #                 full_answer += f"[错误] {line}\n\n"
-                
-                #         output_queue.task_done()
-            
-                #     except queue.Empty:
-                #     # 队列空时检查进程是否已意外终止
-                #         if proc.poll() is not None and not read_thread.is_alive():
-                #             break
-                #         continue
-                # ----------实际部分----------
-
-                #     line = proc.stdout.readline().strip()
-                #     if not line and proc.poll() is None:
-                #         # 如果读取到空字符串且进程已结束，则退出循环
-                #         break
-                #     if line:
-                #         print("line: ", line)
-                #         text_chunk_data = SSETextChunk(text=line)
-                #         sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-                #         yield sse_chunk
-                #         await asyncio.sleep(0.05)
-                #         full_answer = full_answer + line + "\n\n"
-                # proc.wait()
-                # for i in range(0, len(full_answer), 5):
-                #     chunk = full_answer[i:i+5]
-                #     text_chunk_data = SSETextChunk(text=chunk)
-                #     sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-                #     yield sse_chunk
-                #     await asyncio.sleep(0.05)
-                
                 # 5. 采用新的图片流式方案并更新Redis
                 mock_images = [
                     {"path": r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\convergence_curve.png", "alt": "收敛曲线"},
@@ -872,3 +730,5 @@ async def execute_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown task type: {request.task_type}"
         )
+
+

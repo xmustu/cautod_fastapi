@@ -2,31 +2,25 @@ from typing import Optional, Dict, List, AsyncGenerator, Union, List, Literal,An
 
 from fastapi import APIRouter
 from fastapi import HTTPException
-from fastapi import status
-from fastapi import Header
-from fastapi import Form
-from fastapi.responses import StreamingResponse
+
+
 from pydantic import BaseModel
 from pydantic import Field
-from pydantic import validator, field_validator
-from pydantic import ValidationError
-from pydantic import HttpUrl
+from pydantic import field_validator
 from fastapi import Depends
 import uuid
 from datetime import datetime
 from database.models_1 import Conversations
 from core.authentication import get_current_active_user
 from core.authentication import User
+from database.models_1 import Tasks
 
-#from sse_starlette import StreamingResponse
-import asyncio
 import json 
 import http.client
 import json
 import httpx
 import os
 import aiohttp
-import redis.asyncio as aioredis
 from pathlib import Path
 from config import Settings
 
@@ -166,12 +160,11 @@ async def get_dify_client():
 
 # dift 客户端
 class DifyClient:
-    def __init__(self,api_key: str, base_url: str, user_id: int, task_id: int,redis_client:aioredis.Redis,):
+    def __init__(self,api_key: str, base_url: str, task_id: int, task_instance: "Tasks"):
         self.api_key = api_key
         self.base_url = base_url
-        self.user_id = user_id
         self.task_id = task_id
-        self.redis = redis_client
+        self.task_instance = task_instance  # 任务实例
         self.headers =  {
             'Authorization': f"Bearer {self.api_key}",
             'Content-Type': 'application/json',
@@ -182,16 +175,11 @@ class DifyClient:
 
     async def chat_stream(self, request: MessageRequest):
         """发送聊天请求并处理流式响应"""
-        #print("request: ",request.model_dump())
+
         url = f"{self.base_url}/v1/chat-messages"
         payload = json.dumps(request.model_dump())
+        FLAG = True
 
-        # 如果没有提供会话ID，则在接下来记住会话ID
-        FLAG = False
-        if request.conversation_id is None:
-            FLAG = True
-        #print("请求的URL:", url)  # Debug log
-        #print("请求的payload:", payload)  # Debug log
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=payload, headers=self.headers) as response:
                 #print("响应状态码:", response.status)  # Debug log
@@ -217,8 +205,11 @@ class DifyClient:
                         # 根据event类型解析为对应的模型
                         #chunk = self._parse_chunk(data)
                         if FLAG:
-                            self.add_conversation_id(data["conversation_id"])
                             FLAG = False
+                            print("进来了")
+                            await self.add_conversation_id(data["conversation_id"])
+                            FLAG = False
+                            print("除去啦")
                         if data["event"] == "message":
                             if "answer" in data:
                                 #text_chunk = SSETextChunk(event="text_chunk", text=chunk.answer)
@@ -227,25 +218,15 @@ class DifyClient:
                     except Exception as e:
                          #yield f"event: error\ndata: {'message': f'解析响应失败: {str(e)}'}\n\n"
                         yield f"解析响应失败: {str(e)}"
-                    await asyncio.sleep(0.05)
+                    #await asyncio.sleep(0.05)
 
     async def add_conversation_id(self,conversation_id: str):
-
-        def get_user_task_key(user_id: str) -> str:
-            """获取用户任务列表在Redis中的键名"""
-            return f"user_tasks:{user_id}"
-
-        user_task_key = get_user_task_key(self.user_id)
-        task_json = await self.redis.hget(user_task_key, self.task_id)
-        if task_json is None:
-            raise RuntimeError("task not found")
-
-        task_info = json.loads(task_json)
-        task_info["dify_chat_conversation_id"] = conversation_id   # 这里修改
-
-        await self.redis.hset(user_task_key, self.task_id, json.dumps(task_info))
+        
+        self.task_instance.dify_conversation_id = conversation_id  # 更新任务的Dify会话ID
+        await self.task_instance.save()
 
 
+    """疑似有bug"""
     # 解析不同类型的SSE事件
     def _parse_chunk(self, data: Dict[str, Any]) -> StreamChunk:
         """根据event类型解析数据到对应的模型"""
@@ -270,7 +251,7 @@ class DifyClient:
         print("解析的事件数据:", chunk_class(**data))  # Debug log
         return chunk_class(**data)
     
-
+# --------------------------已弃用------------------------
 # 调用dify的API进行几何建模
 async def geometry_dify_api(query: str) -> AsyncGenerator:
    # 连接本地服务，使用Dify默认端口5001（根据实际情况修改）
@@ -323,7 +304,7 @@ async def geometry_dify_api(query: str) -> AsyncGenerator:
                     
                     full_answer.append(chunk)
 
-
+# --------------------------已弃用------------------------
 
 @geometry.get("/")
 async def geometry_home():

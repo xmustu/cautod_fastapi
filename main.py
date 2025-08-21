@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -10,13 +10,12 @@ from apps.app02 import geometry
 from apps.app03 import optimize
 from apps.tasks import router as tasks_router
 from apps.chat import router as chat_router
-from core.middleware import count_time_middleware, request_response_middleware
+from core.middleware import count_time_middleware
 from tortoise.contrib.fastapi import register_tortoise
 from settings import TORTOISE_ORM_sqlite, TORTOISE_ORM_mysql
 from contextlib import asynccontextmanager
 from database.redis import redis_connect
 from core.geometry import start_mcp, dify_api_port_forward
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -85,6 +84,7 @@ app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
 app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
 app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
+
 
 # --- 新增：挂载静态文件目录 ---
 # 创建 files 目录（如果不存在）

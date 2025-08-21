@@ -44,6 +44,7 @@ class Tasks(Model):
         "models.Conversations", related_name="tasks", to_field="conversation_id", on_delete=fields.CASCADE
     )
     user_id = fields.IntField()
+    dify_conversation_id = fields.CharField(max_length=255, null=True)  # Dify 对话 ID
     task_type = fields.CharField(max_length=50)  # 'geometry', 'retrieval', 'optimize'
     status = fields.CharField(max_length=20, default="pending")
     created_at = fields.DatetimeField(auto_now_add=True)

@@ -6,17 +6,12 @@ from fastapi import responses
 from fastapi import Depends
 from fastapi.exceptions import HTTPException
 from fastapi.templating import Jinja2Templates
-from fastapi.security import OAuth2PasswordBearer
-from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, field_validator
-from pydantic import ValidationError 
+from pydantic import BaseModel
 from database.models_1 import *
 from core.hashing import Hasher
 from core.authentication import create_token
-from typing import List, Optional
-from core.authentication import Token, User
+from core.authentication import  User
 from core.authentication import get_current_active_user
-import json
 import httpx
 from config import Settings
 
@@ -27,15 +22,6 @@ user = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 settings = Settings()
-# class UserIn(BaseModel):
-#     user_id : int
-#     email : str
-#     pwd : str
-
-    #@field_validator('name')
-    #def name_must_alpha(cls, v):
-    #    assert v.isalpha(), 'name must be alpha'
-    #    return v
 
 class AuthConfig(BaseModel):
     client_id: str = settings.GITHUB_CLIENT_ID
@@ -74,15 +60,6 @@ async def login(request: Request,
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password")
     
     access_token = create_token(data={"sub": user.email})
-    """
-    response = responses.RedirectResponse(
-        "/?alert=Successfully Logged In", status_code=status.HTTP_302_FOUND
-    )
-    response.set_cookie(
-        key="access_token", value=f"Bearer {access_token}", httponly=True
-    )
-    return response
-    """
     return {"status":"success", "access_token":access_token}
 
 @user.get("/auth/github", summary="GitHub OAuth2 登录")
