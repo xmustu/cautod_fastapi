@@ -1,8 +1,6 @@
 from typing import Optional, Dict, List, Any
 
 from fastapi import APIRouter
-from fastapi import HTTPException
-from fastapi import status
 from fastapi import Header
 from pydantic import BaseModel
 from pydantic import Field
@@ -85,3 +83,5 @@ async def optimize_design(
     #    media_type="text/event-stream"
     #)
     return optimization_stream()
+
+

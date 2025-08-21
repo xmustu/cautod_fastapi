@@ -732,3 +732,34 @@ async def execute_task(
         )
 
 
+class OptimizationParamsRequest(BaseModel):
+    """接收优化参数的请求体模型"""
+    conversation_id: str = Field(..., description="任务所属的对话ID")
+    task_id: int = Field(..., description="任务ID")
+    params: Dict[str, Dict[str, float]] = Field(..., description="优化参数及其范围，例如 {'param1': {'min': 0.1, 'max': 1.0}}")
+
+@router.post("/optimize/submit-params", summary="提交优化参数")
+async def submit_optimization_params(
+    request_data: OptimizationParamsRequest,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    接收前端提交的优化参数，并打印。
+    """
+    print(f"--- Received optimization parameters for conversation {request_data.conversation_id}, task {request_data.task_id} ---")
+    print("Received Params:", request_data.params)
+
+    # 这里可以添加验证逻辑，例如验证 task_id 和 conversation_id 是否属于当前用户
+    task = await Tasks.get_or_none(
+        task_id=request_data.task_id,
+        user_id=current_user.user_id,
+        conversation_id=request_data.conversation_id
+    )
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found or does not belong to the current user/conversation."
+        )
+
+    # 模拟成功响应
+    return {"message": "Parameters received successfully and printed to console."}
