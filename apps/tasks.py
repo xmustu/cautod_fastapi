@@ -527,96 +527,96 @@ async def execute_task(
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
 
-                # 3. 模拟流式发送文本块并更新Redis
-                FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\846ac6da-3e33-419e-ba9f-de37a2a89df0\426\backend_log.txt"
-                with open(FILE_PATH, "rb") as f:
-                    full_answer_source = f.read().decode("utf-8")
+                # # 3. 模拟流式发送文本块并更新Redis
+                # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\846ac6da-3e33-419e-ba9f-de37a2a89df0\426\backend_log.txt"
+                # with open(FILE_PATH, "rb") as f:
+                #     full_answer_source = f.read().decode("utf-8")
                 
-                for i in range(0, len(full_answer_source), 5):
-                    chunk = full_answer_source[i:i+5]
-                    assistant_message.content += chunk
-                    assistant_message.timestamp = datetime.now()
+                # for i in range(0, len(full_answer_source), 5):
+                #     chunk = full_answer_source[i:i+5]
+                #     assistant_message.content += chunk
+                #     assistant_message.timestamp = datetime.now()
                     
-                    text_chunk_data = SSETextChunk(text=chunk)
-                    yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                #     text_chunk_data = SSETextChunk(text=chunk)
+                #     yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
                     
-                    await save_or_update_message_in_redis(
-                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                    )
-                    await asyncio.sleep(0.05)
-
-                # # 3. 启动算法服务
-                model_path = rf"{request.file_url}" if request.file_url else r".\AutoFrame.SLDPRT"
-                # request_to_algorithm = AlgorithmRequest(
-                #     task_id=str(request.task_id),
-                #     conversation_id = str(request.conversation_id),
-                #     geometry_description="",
-                #     parameters={
-                #         "model_path": model_path,
-                       
-                #     }
-                # )
-                # algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
-                # # 检查算法服务健康状态
-                # health_status = await algorithm_client.check_health()
-                # if health_status.status != "healthy":
-                #     raise HTTPException(
-                #         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                #         detail="Algorithm service is not healthy."
+                #     await save_or_update_message_in_redis(
+                #         user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                #         conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                 #     )
-                # # 调用算法服务执行优化任务
-                # task_status = await algorithm_client.run_algorithm(request_to_algorithm)
-                # task.status = task_status.status
-                # await task.save()
+                #     await asyncio.sleep(0.05)
+
+                # 3. 启动算法服务
+                model_path = rf"{request.file_url}" if request.file_url else r".\AutoFrame.SLDPRT"
+                request_to_algorithm = AlgorithmRequest(
+                    task_id=str(request.task_id),
+                    conversation_id = str(request.conversation_id),
+                    geometry_description="",
+                    parameters={
+                        "model_path": model_path,
+                       
+                    }
+                )
+                algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
+                # 检查算法服务健康状态
+                health_status = await algorithm_client.check_health()
+                if health_status.status != "healthy":
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Algorithm service is not healthy."
+                    )
+                # 调用算法服务执行优化任务
+                task_status = await algorithm_client.run_algorithm(request_to_algorithm)
+                task.status = task_status.status
+                await task.save()
                 
-                # """
-                # 4.异步监控日志文件，提取指定任务的日志并生成SSE格式响应
-                #  """
-                # full_answer = ""
-                # LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
-                # if not LOG_FILE_PATH.exists():
-                #     with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
-                #         f.write("")  # 创建空文件
+                """
+                4.异步监控日志文件，提取指定任务的日志并生成SSE格式响应
+                 """
+                full_answer = ""
+                LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
+                if not LOG_FILE_PATH.exists():
+                    with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
+                        f.write("")  # 创建空文件
 
-                # # 记录初始文件位置
-                # start_position = LOG_FILE_PATH.stat().st_size
-                # async with aiofiles.open(LOG_FILE_PATH, "r",encoding="utf-8") as log_file:
+                # 记录初始文件位置
+                start_position = LOG_FILE_PATH.stat().st_size
+                async with aiofiles.open(LOG_FILE_PATH, "r",encoding="utf-8") as log_file:
 
-                #     await log_file.seek(start_position) 
+                    await log_file.seek(start_position) 
 
-                #     while True:
-                #         # 1. 检查任务状态
-                #         try:
-                #             pass
-                #         except:
-                #             pass
+                    while True:
+                        # 1. 检查任务状态
+                        try:
+                            pass
+                        except:
+                            pass
 
-                #         #2. 读取新增日志
-                #         line = await log_file.readline()
-                #         if line:
-                #             if not line.endswith('\n'):
-                #                  line += '\n'
-                #             chunk = line #.replace("\\n", "\n")
+                        #2. 读取新增日志
+                        line = await log_file.readline()
+                        if line:
+                            if not line.endswith('\n'):
+                                 line += '\n'
+                            chunk = line #.replace("\\n", "\n")
 
-                #             assistant_message.content += chunk
-                #             assistant_message.timestamp = datetime.now()
+                            assistant_message.content += chunk
+                            assistant_message.timestamp = datetime.now()
 
-                #             text_chunk_data = SSETextChunk(text=chunk)
-                #             sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                            text_chunk_data = SSETextChunk(text=chunk)
+                            sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
 
-                #             await save_or_update_message_in_redis(
-                #                 user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                #                 conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                #             )
+                            await save_or_update_message_in_redis(
+                                user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                                conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                            )
                             
-                #             yield sse_chunk
-                #             await asyncio.sleep(0.05)  # 控制发送速度
-                #         else:
-                #             # 无新内容时等待
-                #             await asyncio.sleep(0.05)
+                            yield sse_chunk
+                            await asyncio.sleep(0.05)  # 控制发送速度
+                        else:
+                            # 无新内容时等待
+                            await asyncio.sleep(0.05)
 
-                #             full_answer += line + "\n\n"
+                            full_answer += line + "\n\n"
 
 
                 # 5. 采用新的图片流式方案并更新Redis
@@ -773,16 +773,15 @@ async def submit_optimization_params(
     algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
     # 检查算法服务健康状态
     health_status = await algorithm_client.check_health()
-    print("Algorithm service health status:", health_status.status)
     if health_status.status != "healthy":
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Algorithm service is not healthy."
         )
     try:
-        print("model_path: ",model_path)
+
         response = await algorithm_client.send_parameter(model_path, request_data.params)
-        print("Algorithm service response:", response)
+
         algorithm_client.close  ()  # 关闭客户端连接
         # 模拟成功响应
         return {"message": "Parameters received successfully and printed to console."}
