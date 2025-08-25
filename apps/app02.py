@@ -221,7 +221,6 @@ class DifyClient:
                          #yield f"event: error\ndata: {'message': f'解析响应失败: {str(e)}'}\n\n"
                         yield f"解析响应失败: {str(e)}"
                     #await asyncio.sleep(0.05)
-        await self.Next_Suggested_Questions()
     async def add_conversation_id(self,conversation_id: str):
         
         self.task_instance.dify_conversation_id = conversation_id  # 更新任务的Dify会话ID
@@ -232,19 +231,21 @@ class DifyClient:
         print("获取下一步建议问题...")  # Debug log
         url = f"{self.base_url}/v1/messages/{self.last_message_id}/suggested?user=abc-123"
         print("建议问题URL:", url)  # Debug log
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url, 
-                headers={
-                    'Authorization': self.headers["Authorization"],
-                    'Content-Type': 'application/json',
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url, 
+                    headers={
+                        'Authorization': self.headers["Authorization"],
+                        'Content-Type': 'application/json',
 
-                }
-            )
+                    }
+                )
 
-            print("建议响应:", response.json()["data"])  # Debug log
-            return response.json()["data"]
-
+                print("建议响应:", response.json()["data"])  # Debug log
+                return response.json()
+        except Exception as e:
+            print(f"获取建议问题时出错: {e}")
 
     """疑似有bug"""
     # 解析不同类型的SSE事件

@@ -8,8 +8,7 @@ from fastapi import status
 from fastapi import Form
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import hashlib
+from fastapi.security import OAuth2PasswordBearer
 from core.authentication import authenticate
 from core.authentication import get_current_active_user, User
 from database.models_1 import *

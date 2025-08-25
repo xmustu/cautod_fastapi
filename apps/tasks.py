@@ -223,7 +223,7 @@ async def execute_task(
     task.file_name = file_name  # 保存文件名到任务实例中
     await task.save()
     
-    combinde_query = request.query + f". 我希望生成的.py 和 .step 文件的命名为：{file_name}" 
+    combinde_query = request.query #+ f". 我希望生成的.py 和 .step 文件的命名为：{file_name}" 
     # + r'\n请注意文件保存路径为"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\mcp_out"'
     print("combinde_query: ", combinde_query)
     # 根据任务类型路由到不同的处理逻辑
@@ -285,8 +285,10 @@ async def execute_task(
                 
                 full_answer = []
                 async for chunk in client.chat_stream(dify_request):
+                    
                     # 关键：将字符串中的 \n 转义符替换为真正的换行控制字符
                     formatted_chunk = chunk.replace("\\n", "\n")
+
                     assistant_message.content += chunk
                     assistant_message.timestamp = datetime.now()
 
@@ -302,28 +304,28 @@ async def execute_task(
                     #await asyncio.sleep(0.05)
                     full_answer.append(chunk)
                 # 获取建议问题
-                suggested_questions = client.Next_Suggested_Questions()
+                suggested_questions = await client.Next_Suggested_Questions()
 
-                # 4. 流式发送预览图
-                image_parts_for_redis = []
-                preview_image_path = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\yuanbao.png"
-                if os.path.exists(preview_image_path):
-                    imgage_file_name = os.path.basename(preview_image_path)
-                    image_url = f"/files/{imgage_file_name}" # 修正：指向 /files 路由
+                # # 4. 流式发送预览图
+                # image_parts_for_redis = []
+                # preview_image_path = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\yuanbao.png"
+                # if os.path.exists(preview_image_path):
+                #     imgage_file_name = os.path.basename(preview_image_path)
+                #     image_url = f"{imgage_file_name}" # 修正：指向 /files 路由
 
-                    image_part = {"type": "image", "imageUrl": image_url, "fileName": file_name, "altText": "几何建模预览图"}
-                    assistant_message.parts.append(image_part)
-                    assistant_message.timestamp = datetime.now()
+                #     image_part = {"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"}
+                #     assistant_message.parts.append(image_part)
+                #     assistant_message.timestamp = datetime.now()
 
-                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=imgage_file_name, altText="几何建模预览图")
-                    yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+                #     image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=imgage_file_name, altText="几何建模预览图")
+                #     yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
 
-                    await save_or_update_message_in_redis(
-                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                    )
+                #     await save_or_update_message_in_redis(
+                #         user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                #         conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                #     )
 
-                    await asyncio.sleep(0.1)
+                #     await asyncio.sleep(0.1)
                     
                     #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"})
 
@@ -527,97 +529,116 @@ async def execute_task(
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
 
-                # # 3. 模拟流式发送文本块并更新Redis
-                # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\846ac6da-3e33-419e-ba9f-de37a2a89df0\426\backend_log.txt"
-                # with open(FILE_PATH, "rb") as f:
-                #     full_answer_source = f.read().decode("utf-8")
+                # 3. 模拟流式发送文本块并更新Redis
+                FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\846ac6da-3e33-419e-ba9f-de37a2a89df0\426\backend_log.txt"
+                with open(FILE_PATH, "rb") as f:
+                    full_answer_source = f.read().decode("utf-8")
                 
-                # for i in range(0, len(full_answer_source), 5):
-                #     chunk = full_answer_source[i:i+5]
-                #     assistant_message.content += chunk
-                #     assistant_message.timestamp = datetime.now()
+                for i in range(0, len(full_answer_source), 5):
+                    chunk = full_answer_source[i:i+5]
+                    assistant_message.content += chunk
+                    assistant_message.timestamp = datetime.now()
                     
-                #     text_chunk_data = SSETextChunk(text=chunk)
-                #     yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                    text_chunk_data = SSETextChunk(text=chunk)
+                    yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
                     
-                #     await save_or_update_message_in_redis(
-                #         user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                #         conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                #     )
-                #     await asyncio.sleep(0.05)
-
-                # 3. 启动算法服务
-                model_path = rf"{request.file_url}" if request.file_url else r".\AutoFrame.SLDPRT"
-                request_to_algorithm = AlgorithmRequest(
-                    task_id=str(request.task_id),
-                    conversation_id = str(request.conversation_id),
-                    geometry_description="",
-                    parameters={
-                        "model_path": model_path,
-                       
-                    }
-                )
-                algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
-                # 检查算法服务健康状态
-                health_status = await algorithm_client.check_health()
-                if health_status.status != "healthy":
-                    raise HTTPException(
-                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        detail="Algorithm service is not healthy."
+                    await save_or_update_message_in_redis(
+                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                     )
-                # 调用算法服务执行优化任务
-                task_status = await algorithm_client.run_algorithm(request_to_algorithm)
-                task.status = task_status.status
-                await task.save()
+                    await asyncio.sleep(0.05)
+
+                # # 3. 启动算法服务
+                model_path = rf"{request.file_url}" if request.file_url else r".\AutoFrame.SLDPRT"
+
+
                 
-                """
-                4.异步监控日志文件，提取指定任务的日志并生成SSE格式响应
-                 """
-                full_answer = ""
-                LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
-                if not LOG_FILE_PATH.exists():
-                    with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
-                        f.write("")  # 创建空文件
+                # optimize_result = await OptimizationResults.get_or_none(task_id=task.task_id)
+                # print("找到优化结果吗？", optimize_result)
+                # update_data = {
+                #     "optimized_cad_file_path": model_path,  
+                # }
+                # if optimize_result:
+                #     # 如果存在则更新
+                #     await optimize_result.update_from_dict(update_data).save()
+                # else:
 
-                # 记录初始文件位置
-                start_position = LOG_FILE_PATH.stat().st_size
-                async with aiofiles.open(LOG_FILE_PATH, "r",encoding="utf-8") as log_file:
+                #     optimize_result = await OptimizationResults.create(
+                #         task_id=task.task_id,**update_data
+                # )
+                # print("优化结果: ", optimize_result)
+                # await optimize_result.save()
+                # request_to_algorithm = AlgorithmRequest(
+                #     task_id=str(request.task_id),
+                #     conversation_id = str(request.conversation_id),
+                #     geometry_description="",
+                #     parameters={
+                #         "model_path": model_path,
+                       
+                #     }
+                # )
+                # algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
+                # # 检查算法服务健康状态
+                # health_status = await algorithm_client.check_health()
+                # if health_status.status != "healthy":
+                #     raise HTTPException(
+                #         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                #         detail="Algorithm service is not healthy."
+                #     )
+                # # 调用算法服务执行优化任务
+                # task_status = await algorithm_client.run_algorithm(request_to_algorithm)
+                # task.status = task_status.status
+                # await task.save()
+                # print(f"Algorithm service returned status: {task.status}")
+                # """
+                # 4.异步监控日志文件，提取指定任务的日志并生成SSE格式响应
+                #  """
+                # full_answer = ""
+                # LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
+                # if not LOG_FILE_PATH.exists():
+                #     with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
+                #         f.write("")  # 创建空文件
 
-                    await log_file.seek(start_position) 
+                # # 记录初始文件位置
+                # start_position = LOG_FILE_PATH.stat().st_size
+                # async with aiofiles.open(LOG_FILE_PATH, "r",encoding="utf-8") as log_file:
 
-                    while True:
-                        # 1. 检查任务状态
-                        try:
-                            pass
-                        except:
-                            pass
+                #     await log_file.seek(start_position) 
 
-                        #2. 读取新增日志
-                        line = await log_file.readline()
-                        if line:
-                            if not line.endswith('\n'):
-                                 line += '\n'
-                            chunk = line #.replace("\\n", "\n")
+                #     while True:
+                #         # 1. 检查任务状态
+                #         try:
+                #             pass
+                #         except:
+                #             pass
 
-                            assistant_message.content += chunk
-                            assistant_message.timestamp = datetime.now()
+                #         #2. 读取新增日志
+                #         line = await log_file.readline()
+                #         if line:
+                #             if not line.endswith('\n'):
+                #                  line += '\n'
+                #             chunk = line #.replace("\\n", "\n")
 
-                            text_chunk_data = SSETextChunk(text=chunk)
-                            sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                #             assistant_message.content += chunk
+                #             assistant_message.timestamp = datetime.now()
 
-                            await save_or_update_message_in_redis(
-                                user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                                conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                            )
+                #             text_chunk_data = SSETextChunk(text=chunk)
+                #             sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+
+                #             await save_or_update_message_in_redis(
+                #                 user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                #                 conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                #             )
                             
-                            yield sse_chunk
-                            await asyncio.sleep(0.05)  # 控制发送速度
-                        else:
-                            # 无新内容时等待
-                            await asyncio.sleep(0.05)
+                #             yield sse_chunk
+                #             await asyncio.sleep(0.05)  # 控制发送速度
+                #         else:
+                #             # 无新内容时等待
+                #             await asyncio.sleep(0.05)
 
-                            full_answer += line + "\n\n"
+                #             full_answer += line + "\n\n"
 
+                # algorithm_client.close()  # 关闭算法客户端连接
 
                 # 5. 采用新的图片流式方案并更新Redis
                 mock_images = [
@@ -663,7 +684,7 @@ async def execute_task(
                     preview_image=None
                 )
                 final_response_data = SSEResponse(
-                    answer=full_answer_source,
+                    answer="".join(full_answer),
                     metadata=final_metadata
                 )
                 
