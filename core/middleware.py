@@ -4,10 +4,10 @@ from fastapi import Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from datetime import datetime
 import json
-import asyncio
+
 from typing import Optional, Dict, Any
 import time
-import logging
+
 from collections import defaultdict
 
 #logger = logging.getLogger("uvicorn.access")

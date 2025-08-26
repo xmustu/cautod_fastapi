@@ -356,20 +356,20 @@ class SuggestedQuestionsResponse(BaseModel):
 # 响应模型
 class GenerationMetadata(BaseModel):
     """生成结果的元数据模型，包含格式验证"""
-    cad_file: str  # 生成的 CAD 模型文件下载地址（.step 格式）
-    code_file: str  # 生成的参数化建模代码文件（.py 格式）
+    cad_file: Optional[str] = None  # 生成的 CAD 模型文件下载地址（.step 格式）
+    code_file: Optional[str] = None  # 生成的参数化建模代码文件（.py 格式）
     preview_image: Union[str, None]  # 3D 模型预览图片（.png 格式）
 
     @field_validator('cad_file')
     def validate_cad_file(cls, v):
         # 验证文件扩展名
-        if not v.lower().endswith('.step') and not v.lower().endswith('.sldprt'):
+        if v and not v.lower().endswith('.step') and not v.lower().endswith('.sldprt'):
             raise ValueError('CAD文件必须是.step或者.sldprt格式')
         return v
 
     @field_validator('code_file')
     def validate_code_file(cls, v):
-        if not v.lower().endswith('.py'):
+        if v and not v.lower().endswith('.py'):
             raise ValueError('代码文件必须是.py格式')
         return v
 

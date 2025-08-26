@@ -148,7 +148,7 @@ class AlgorithmClient:
         """发送优化参数到算法服务"""
         try:
 
-            with open(rf"{model_path}\parametes.txt", "w", encoding="utf-8") as f:
+            with open(rf"{model_path}\parameters.txt", "w", encoding="utf-8") as f:
                 f.write(str(param))
 
             response = await self.client.post(
