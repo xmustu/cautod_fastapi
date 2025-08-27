@@ -248,6 +248,9 @@ async def execute_task(
                 conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
+
+                # markdownsign ="```"
+                # yield f'event: text_chunk\ndata: {SSETextChunk(text=markdownsign).model_dump_json()}\n\n'
                 # greetings = "请耐心等待，正在检索数据库...\n"
                 # yield f'event: text_chunk\ndata: {SSETextChunk(text=greetings).model_dump_json()}\n\n'
                 # 前端测试案例
@@ -303,6 +306,9 @@ async def execute_task(
 
                     #await asyncio.sleep(0.05)
                     full_answer.append(chunk)
+
+                # markdownsign ="```"
+                # yield f'event: text_chunk\ndata: {SSETextChunk(text=markdownsign).model_dump_json()}\n\n'
                 # 获取建议问题
                 suggested_questions = await client.Next_Suggested_Questions()
 
@@ -346,14 +352,20 @@ async def execute_task(
                     )
 
                     # 5. 通知前端展示预览图
-                    imgage_file_name = "Oblique_View.png"
-                    image_url = None
+                    image_file_name = "Oblique_View.png"
 
-                    image_part = {"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"}
+                    # 定义路径片段
+                    parts = ["/files", str(request.conversation_id), str(task.task_id), image_file_name]
+
+                    # 用 "/" 拼接路径
+                    image_url = "/".join(parts)
+                    #image_url = os.path.join("/files", str(request.conversation_id), str(task.task_id), imgage_file_name)
+                    print("image_url: ", image_url)
+                    image_part = {"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": "几何建模预览图"}
                     assistant_message.parts.append(image_part)
                     assistant_message.timestamp = datetime.now()
 
-                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=imgage_file_name, altText="几何建模预览图")
+                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=image_file_name, altText="几何建模预览图")
                     yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
 
                     await save_or_update_message_in_redis(
@@ -676,7 +688,7 @@ async def execute_task(
 
                             full_answer += line + "\n\n"
 
-                algorithm_client.close()  # 关闭算法客户端连接
+                await algorithm_client.close()  # 关闭算法客户端连接
 
                 # 5. 采用新的图片流式方案并更新Redis
                 mock_images = [
