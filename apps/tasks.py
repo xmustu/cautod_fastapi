@@ -308,56 +308,70 @@ async def execute_task(
 
 
 
-                # 查询是否有建模结果
-                geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
+                # # 查询是否有建模结果
+                # geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
 
                 
-                # 4. 流式发送预览图
-                if geometry_result:
+                # # 4. 流式发送预览图
+                # if geometry_result:
 
-                    preview_image_path = geometry_result.preview_image_path if geometry_result.preview_image_path else r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\yuanbao.png"
-                    if os.path.exists(preview_image_path):
-                        imgage_file_name = os.path.basename(preview_image_path)
-                        image_url = f"{imgage_file_name}" # 修正：指向 /files 路由
+                #     preview_image_path = geometry_result.preview_image_path if geometry_result.preview_image_path else r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\yuanbao.png"
+                #     if os.path.exists(preview_image_path):
+                #         imgage_file_name = os.path.basename(preview_image_path)
+                #         image_url = f"{imgage_file_name}" # 修正：指向 /files 路由
 
-                        image_part = {"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"}
-                        assistant_message.parts.append(image_part)
-                        assistant_message.timestamp = datetime.now()
+                #         image_part = {"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"}
+                #         assistant_message.parts.append(image_part)
+                #         assistant_message.timestamp = datetime.now()
 
-                        image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=imgage_file_name, altText="几何建模预览图")
-                        yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+                #         image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=imgage_file_name, altText="几何建模预览图")
+                #         yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
 
-                        await save_or_update_message_in_redis(
-                            user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                            conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                        )
+                #         await save_or_update_message_in_redis(
+                #             user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                #             conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                #         )
 
-                        await asyncio.sleep(0.1)
+                #         await asyncio.sleep(0.1)
                     
                     #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"})
 
-                # 5. 发送包含完整元数据的结束消息
-            
+                # 4. 发送包含完整元数据的结束消息
+                geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
+                if geometry_result:
+                    final_metadata = GenerationMetadata(
+                            cad_file="model.step",
+                            code_file="script.py",
+                            preview_image="Oblique_View.png"
+                    )
 
-                # geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
-                # if geometry_result:
-                #     final_metadata = GenerationMetadata(
-                #     cad_file=geometry_result.cad_file_path if geometry_result.cad_file_path else None,
-                #     code_file=geometry_result.code_file_path if geometry_result.code_file_path else None,
-                #     preview_image=geometry_result.preview_image_path if geometry_result.preview_image_path else None
-                # )        
-                # else:
-                #         final_metadata = GenerationMetadata(
-                #             cad_file=None,
-                #             code_file=None,
-                #             preview_image=None
-                #         )
-                final_metadata = GenerationMetadata(
-                             cad_file="model.step",
-                             code_file="script.py",
-                             preview_image="Oblique_View.png"
-                )
+                    # 5. 通知前端展示预览图
+                    imgage_file_name = "Oblique_View.png"
+                    image_url = None
+
+                    image_part = {"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"}
+                    assistant_message.parts.append(image_part)
+                    assistant_message.timestamp = datetime.now()
+
+                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=imgage_file_name, altText="几何建模预览图")
+                    yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+
+                    await save_or_update_message_in_redis(
+                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    )
+
+                    await asyncio.sleep(0.1)
+
+                else:
+                    final_metadata = GenerationMetadata(
+                        cad_file=None,
+                        code_file=None,
+                        preview_image=None
+                    )
+   
                 assistant_message.metadata = final_metadata.model_dump()
+
 
                 final_response_data = SSEResponse(
                     answer=''.join(full_answer),
@@ -367,6 +381,7 @@ async def execute_task(
                 
                 sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
                 yield sse_final
+
 
                 # 6. 保存结构化的助手消息到Redis,最后一次更新Redis，状态为 "done"
                 assistant_message.status = "done"
