@@ -142,7 +142,6 @@ async def create_task(
         #dift_conversation_id="", # 初始为空，后续可更新
         # 'details' 字段在 Tasks 模型中不存在，因此不直接保存
     )
-    print("---------------这是一次创建啊任务------------------")
     # 创建任务的文件存放目录
     # 获取当前目录的上一级目录
     parent_dir = Path(os.getcwd())
@@ -355,7 +354,7 @@ async def execute_task(
                 #         )
                 final_metadata = GenerationMetadata(
                              cad_file="model.step",
-                             code_file="script.p"y,
+                             code_file="script.py",
                              preview_image="Oblique_View.png"
                 )
                 assistant_message.metadata = final_metadata.model_dump()
