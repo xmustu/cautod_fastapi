@@ -156,25 +156,25 @@ def mcp_cadquery(app: FastAPI):
         code = cadquery_code
         if "result.export" not in code:
             code += f"\nresult.export(r'{model_step}')"
-            # code += "\nfrom cadquery.vis import show"
+            code += "\nfrom cadquery.vis import show"
             # code += "\nimport pyvista as pv  # cadquery的可视化依赖"
-            code += "\nfrom cadquery import exporters"
-            code += f'''
-exporters.export(
-    result,
-    r'{image_png}',  # 路径变量嵌入
-    exportType="png",
-    # 设置渲染参数（类似原 show 函数的视角）
-    opt={{
-        "width": 800,
-        "height": 600,
-        "roll": 10,
-        "elevation": -65,
-        "renderer": "matplotlib"  # 使用 matplotlib 后端（无需窗口）
-    }}
-)'''
+            # code += "\nfrom cadquery import exporters"
+#             code += f'''
+# exporters.export(
+#     result,
+#     r'{image_png}',  # 路径变量嵌入
+#     exportType="png",
+#     # 设置渲染参数（类似原 show 函数的视角）
+#     opt={{
+#         "width": 800,
+#         "height": 600,
+#         "roll": 10,
+#         "elevation": -65,
+#         "renderer": "matplotlib"  # 使用 matplotlib 后端（无需窗口）
+#     }}
+# )'''
             # code += "\npv.OFF_SCREEN = True  # 启用离线渲染模式"
-            # code += f"\nshow(result, title='斜视图', roll=10, elevation=-65, screenshot=r'{image_png}', interact=False)"
+            code += f"\nshow(result, title='斜视图', roll=10, elevation=-65, screenshot=r'{image_png}', interact=False)"
             # code += f"\nshow(result, title='主视图', roll=0, elevation=90, screenshot='{ws}\\\\front_view.png', interact=False)"
             # code += f"\nshow(result, title='侧视图', roll=90, elevation=90, screenshot='{ws}\\\\side_view.png', interact=False)"
             # code += f"\nshow(result, title='俯视图', roll=0, elevation=0, screenshot='{ws}\\\\top_view.png', interact=False)"
