@@ -16,6 +16,13 @@ from .schemas import ConversationOut
 import os
 import mimetypes
 from apps.chat import get_message_key, get_user_task_key
+from pydantic import BaseModel
+from pathlib import Path
+
+class FileRequest(BaseModel):
+    task_id: int
+    conversation_id: str
+    file_name: str
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 templates = Jinja2Templates(directory="templates")
@@ -71,49 +78,67 @@ async def upload_file(*,
     }
 
 
-@router.get("/download_file/{file_name:path}", summary="下载文件")
+@router.post("/download_file", summary="下载文件")
 async def download_file(
-    file_name: str,
+    request: FileRequest,
     current_user: User = Depends(get_current_active_user)
 ):
     """
     从服务器安全地下载文件。
     - file_name: 要下载的文件的名称或相对路径。
     """
-    print("下载文件:", file_name)  # Debug log
+    print("下载文件:", request.file_name)  # Debug log
     try:
-        # 构建文件的完整路径并标准化
-        safe_path = None
-        for base_dir in ALLOWED_BASE_DIRS:
-            # 尝试在每个允许的目录下查找文件
-            candidate_path = os.path.abspath(os.path.join(base_dir, file_name))
-            # 检查路径是否在当前基础目录下且是一个文件
-            if os.path.isfile(candidate_path):
-                safe_path = candidate_path
-                break  # 找到第一个匹配的文件即停止
+        # # 构建文件的完整路径并标准化
+        # safe_path = None
+        # for base_dir in ALLOWED_BASE_DIRS:
+        #     # 尝试在每个允许的目录下查找文件
+        #     candidate_path = os.path.abspath(os.path.join(base_dir, file_name))
+        #     # 检查路径是否在当前基础目录下且是一个文件
+        #     if os.path.isfile(candidate_path):
+        #         safe_path = candidate_path
+        #         break  # 找到第一个匹配的文件即停止
 
-        # 检查文件是否存在于任何允许的目录中
-        if not safe_path:
-            # 构建详细的错误信息，方便调试
-            checked_paths = [os.path.join(dir, file_name) for dir in ALLOWED_BASE_DIRS]
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"文件未找到。已检查路径: {checked_paths}"
-            )
+        # # 检查文件是否存在于任何允许的目录中
+        # if not safe_path:
+        #     # 构建详细的错误信息，方便调试
+        #     checked_paths = [os.path.join(dir, file_name) for dir in ALLOWED_BASE_DIRS]
+        #     raise HTTPException(
+        #         status_code=status.HTTP_404_NOT_FOUND,
+        #         detail=f"文件未找到。已检查路径: {checked_paths}"
+        #     )
 
 
-        # 提取纯文件名用于响应头
-        response_file_name = os.path.basename(safe_path)
+        # # 提取纯文件名用于响应头
+        # response_file_name = os.path.basename(safe_path)
         
         # 动态推断 MIME 类型
-        media_type, _ = mimetypes.guess_type(safe_path)
-        print(f"Guessed MIME type for {file_name}: {media_type}") # Debug log
+        task = await Tasks.get_or_none(
+        task_id=request.task_id,
+        user_id=current_user.user_id,
+        conversation_id=request.conversation_id
+        )
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Task not found or does not belong to the current user/conversation."
+            )
+        
+        # construct user's file path according to conversation_id and task_id
+        # 创建任务的文件存放目录
+        # 获取当前目录的上一级目录
+        parent_dir = Path(os.getcwd())
+        # 构建目标目录路径：上一级目录/files/会话ID
+        task_dir = parent_dir / "files" / str(request.conversation_id) / str(request.task_id)
+        file = task_dir / request.file_name
+        media_type, _ = mimetypes.guess_type(file)
+        print(f"Guessed MIME type for {request.file_name}: {media_type}") # Debug log
         if media_type is None:
             media_type = 'application/octet-stream' # 如果无法推断，则使用默认值
-
+        print()
         return FileResponse(
-            path=safe_path,
-            filename=response_file_name,
+            path=file,
+            filename=request.file_name,
             media_type=media_type
         )
     except HTTPException as e:

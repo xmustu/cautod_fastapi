@@ -338,20 +338,26 @@ async def execute_task(
                     #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"})
 
                 # 5. 发送包含完整元数据的结束消息
+            
+
+                # geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
+                # if geometry_result:
+                #     final_metadata = GenerationMetadata(
+                #     cad_file=geometry_result.cad_file_path if geometry_result.cad_file_path else None,
+                #     code_file=geometry_result.code_file_path if geometry_result.code_file_path else None,
+                #     preview_image=geometry_result.preview_image_path if geometry_result.preview_image_path else None
+                # )        
+                # else:
+                #         final_metadata = GenerationMetadata(
+                #             cad_file=None,
+                #             code_file=None,
+                #             preview_image=None
+                #         )
                 final_metadata = GenerationMetadata(
-                    cad_file=None,
-                    code_file=None,
-                    preview_image=None
+                             cad_file="model.step",
+                             code_file="script.p"y,
+                             preview_image="Oblique_View.png"
                 )
-
-
-                if geometry_result:
-                    final_metadata = GenerationMetadata(
-                    cad_file=geometry_result.cad_file_path if geometry_result.cad_file_path else None,
-                    code_file=geometry_result.code_file_path if geometry_result.code_file_path else None,
-                    preview_image=geometry_result.preview_image_path if geometry_result.preview_image_path else None
-                )        
-                    
                 assistant_message.metadata = final_metadata.model_dump()
 
                 final_response_data = SSEResponse(
