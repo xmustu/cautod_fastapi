@@ -50,6 +50,7 @@ async def save_file(file, path: Optional[str] = None, conversation_id: int = Non
     full_file = f"{path}\{file.filename}"
     with open(full_file, "wb") as f:
         f.write(res)
+    await file.close()
     return full_file
 
 

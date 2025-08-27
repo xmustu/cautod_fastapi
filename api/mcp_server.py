@@ -24,7 +24,10 @@ async def obtain_work_dir(dify_conversation_id: str) -> Path:
         parent_dir = Path(os.getcwd())
         # 构建目标目录路径：上一级目录/files/会话ID
         task_dir = parent_dir / "files" / str(conversation_id) / str(task_id)
-        return task_dir
+        print("任务目录: ", task_dir)
+        relative_task_dir = task_dir.relative_to(Path(os.getcwd()))
+        print("相对任务目录: ", relative_task_dir)
+        return relative_task_dir
     except Exception as e:
         raise RuntimeError(f"无法获取Dify会话ID对应的任务信息: {str(e)}")
 

@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     #关闭日志服务
 
     #关闭数据库连接
-    await app.state.redis.close()  # 关闭 Redis 连接
+    await app.state.redis.aclose()  # 关闭 Redis 连接
     #退出第三方服务
     #print("stdout: ", mcp_process.stdout)
     #print("stderr: ", mcp_process.stderr)
@@ -54,29 +54,7 @@ app = FastAPI()
 
 
 
-# # CORS 中间件配置
-# origins = [
-#     "http://localhost:5173",  # 允许 Vite 开发服务器的源
-#     "http://127.0.0.1:5173", # 有时浏览器会使用 127.0.0.1
-#     "http://localhost/",
-#     # 在生产环境中，应替换为你的前端域名
-# ]
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],#allow_origins=origins,
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-# # app.add_middleware(FullRequestLoggerMiddleware)
-
-# register_tortoise(
-#     app,
-#     config=TORTOISE_ORM_sqlite,  # 使用 MySQL 配置
-#     generate_schemas=True,  # 在应用启动时自动创建数据库表
-#     add_exception_handlers=True,
-# )
 
 # 关键修复：使用相对路径 + 递归通配符，适配Windows系统
 # 1. 相对路径模式（相对于当前工作目录）
@@ -88,38 +66,15 @@ exclude_patterns = [
     "files\\**\\*"      # Windows递归匹配（可选）
 ]
 
-# app.include_router(user, prefix="/api/user", tags=["用户部分", ])
-# app.include_router(geometry, prefix="/api/geometry", tags=["几何建模", ])
-# app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
-# app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
-# app.include_router(router, prefix="/api", tags=["功能", ])
-# app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
-
-
 # --- 新增：挂载静态文件目录 ---
 # 创建 files 目录（如果不存在）
 os.makedirs("files", exist_ok=True)
-# app.mount("/files", StaticFiles(directory="files"), name="files")
+app.mount("/files", StaticFiles(directory="files"), name="files")
 
-
-
-
-
-
-
-# Create MCP server
-
-# # Create an MCP server based on this app
-# mcp = FastApiMCP(app)
-# # Mount the MCP server directly to your app
-# mcp.mount_http()
-
-
-# 统一输出根目录
-BASE_OUT = "C:\\\\Users\\\\dell\\\\Projects\\\\cadquery_test\\\\cadquery_test\\\\mcp_server\\\\mcp_output"
 
 # gengerate the ASGI app for MCP
 mcp_app = mcp_cadquery(app)
+
 
 # Combine both lifespans
 @asynccontextmanager
@@ -145,10 +100,9 @@ origins = [
     "http://localhost/",
     # 在生产环境中，应替换为你的前端域名
 ]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],#allow_origins=origins,
+    allow_origins=origins,#allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -172,4 +126,4 @@ app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
 
 
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="127.0.0.1", port=8080,  log_level="debug",reload=False, reload_excludes=exclude_patterns)
+    uvicorn.run("main:app", host="127.0.0.1", port=8080,  log_level="debug",reload=True, reload_excludes=exclude_patterns)
