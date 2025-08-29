@@ -19,3 +19,5 @@ redis
 tomlkit
 aiofiles
 aiohttp
+websockets
+fastmcp

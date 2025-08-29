@@ -13,7 +13,7 @@ class TaskOut(BaseModel):
     # For now, focusing on the fields the user reported as missing.
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ConversationOut(BaseModel):
     conversation_id: str
@@ -23,4 +23,4 @@ class ConversationOut(BaseModel):
     tasks: List[TaskOut] = []
 
     class Config:
-        orm_mode = True
+        from_attributes = True

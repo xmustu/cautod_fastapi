@@ -12,7 +12,7 @@ from apps.app02 import GenerationMetadata, SSEConversationInfo, SSETextChunk, SS
 import os
 from apps.chat import save_message_to_redis, Message, save_or_update_message_in_redis
 from apps.app02 import  DifyClient
-from apps.app03 import AlgorithmClient, AlgorithmRequest, OptimizationParamsRequest
+from apps.app03 import AlgorithmClient, AlgorithmRequest, OptimizationParamsRequest,create_task_monitor_callback, write_key
 import time 
 import uuid
 import asyncio
@@ -466,7 +466,10 @@ async def execute_task(
                 )
 
                 # 2. 发送会话信息
-                conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
+                conversation_info_data = SSEConversationInfo(
+                    conversation_id=request.conversation_id, 
+                    task_id=str(request.task_id)
+                )
                 yield f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
 
                 # 3. 发送初始文本块并更新Redis
@@ -566,16 +569,25 @@ async def execute_task(
                 metadata={},
                 status="in_progress"
             )
-
+            # 初始化状态标识
+            task_terminate_event = asyncio.Event()  # 任务终止信号（用于两个并行任务通信）
+            control_monitor_result = {"success": None, "message": ""}  # 控制监听结果存储
             try:
-                 # 1. 立即保存初始的 "in_progress" 消息
+                 # 1. 立即保存初始的 "in_progress" 消息,
                 await save_or_update_message_in_redis(
-                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    user_id=current_user.user_id,
+                    task_id=request.task_id, 
+                    task_type=request.task_type,
+                    conversation_id=request.conversation_id, 
+                    message=assistant_message, 
+                    redis_client=redis_client
                 )
 
                 # 2. 发送会话和任务信息
-                conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
+                conversation_info_data = SSEConversationInfo(
+                    conversation_id=request.conversation_id, 
+                    task_id=str(request.task_id)
+                )
                 sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
                 yield sse_conv_info
 
@@ -598,11 +610,11 @@ async def execute_task(
                 #     )
                 #     await asyncio.sleep(0.05)
 
-                # 3. 启动算法服务
+                # 3. 准备模型路径和优化结果记录
                 model_path = rf"{request.file_url}" if request.file_url else r".\AutoFrame.SLDPRT"
+                print("optimize model_path: ", model_path)
 
-
-                
+                # 初始化或更新优化结果记录
                 optimize_result = await OptimizationResults.get_or_none(task_id=task.task_id)
                 print("找到优化结果吗？", optimize_result)
                 update_data = {
@@ -614,17 +626,19 @@ async def execute_task(
                 else:
 
                     optimize_result = await OptimizationResults.create(
-                        task_id=task.task_id,**update_data
+                        task_id=task.task_id,
+                        **update_data
                 )
                 print("优化结果: ", optimize_result)
                 await optimize_result.save()
+
+                # 4. 准备算法请求
                 request_to_algorithm = AlgorithmRequest(
-                    task_id=str(request.task_id),
+                    task_id=str(task.task_id),
                     conversation_id = str(request.conversation_id),
                     geometry_description="",
                     parameters={
                         "model_path": model_path,
-                       
                     }
                 )
                 algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
@@ -635,14 +649,26 @@ async def execute_task(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                         detail="Algorithm service is not healthy."
                     )
-                # 调用算法服务执行优化任务
+                
+
+                # 5. 提交算法服务执行优化任务
                 task_status = await algorithm_client.run_algorithm(request_to_algorithm)
                 task.status = task_status.status
                 await task.save()
                 print(f"Algorithm service returned status: {task.status}")
-                """
-                4.异步监控日志文件，提取指定任务的日志并生成SSE格式响应
-                 """
+
+                # 6. 创建控制文件监听回调
+                monitor_callback = create_task_monitor_callback(
+                    model_path = model_path,
+                    client = algorithm_client,
+                )
+                # 订阅任务启动通知
+                status_monitor_task = asyncio.create_task(
+                      monitor_callback()
+                )
+                print("出来了吗")
+                # 7. 异步监控日志文件，提取指定任务的日志并生成SSE格式响应
+
                 full_answer = ""
                 LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
                 if not LOG_FILE_PATH.exists():
@@ -655,7 +681,7 @@ async def execute_task(
 
                     await log_file.seek(start_position) 
 
-                    while True:
+                    while not task_terminate_event.is_set():
                         # 1. 检查任务状态
                         try:
                             pass
@@ -666,7 +692,7 @@ async def execute_task(
                         line = await log_file.readline()
                         if line:
                             if not line.endswith('\n'):
-                                 line += '\n'
+                                line += '\n'
                             chunk = line #.replace("\\n", "\n")
 
                             assistant_message.content += chunk
@@ -679,23 +705,29 @@ async def execute_task(
                                 user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
                                 conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                             )
-                            
+                        
                             yield sse_chunk
                             await asyncio.sleep(0.05)  # 控制发送速度
                         else:
                             # 无新内容时等待
                             await asyncio.sleep(0.05)
 
-                            full_answer += line + "\n\n"
+                        full_answer += line + "\n\n"
 
+
+
+                # 确保状态监控任务完成
+                # if not status_monitor_task.done():
+                #     await status_monitor_task
+                print("执行这个close了吗")
                 await algorithm_client.close()  # 关闭算法客户端连接
 
-                # 5. 采用新的图片流式方案并更新Redis
+                # 8. 采用新的图片流式方案并更新Redis
                 mock_images = [
-                    {"path": rf"{model_path}\convergence_curve.png", "alt": "收敛曲线"},
-                    {"path": rf"{model_path}\parameter_distribution.png", "alt": "参数分布图"}
+                    {"path": rf"{os.path.dirname(model_path)}\convergence_curve.png", "alt": "收敛曲线"},
+                    {"path": rf"{os.path.dirname(model_path)}\parameter_distribution.png", "alt": "参数分布图"}
                 ]
-
+                print("要展示的图片： ", mock_images)
                 image_parts_for_redis = []
                 for img_data in mock_images:
                     if os.path.exists(img_data["path"]):
@@ -727,7 +759,7 @@ async def execute_task(
                         # 准备存入Redis的数据
                         #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": img_data["alt"]})
 
-                # 6. 发送结束消息
+                # 9. 发送结束消息
                 final_metadata = GenerationMetadata(
                     cad_file=model_path,
                     code_file="script.py",
@@ -741,7 +773,7 @@ async def execute_task(
                 sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
                 yield sse_final
 
-                 # 7. 最后一次更新Redis，状态为 "done"
+                 # 10. 最后一次更新Redis，状态为 "done"
                 assistant_message.status = "done"
                 assistant_message.timestamp = datetime.now()
                 await save_or_update_message_in_redis(
@@ -749,7 +781,7 @@ async def execute_task(
                     conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                 )
 
-                # 8. 数据库操作，保存任务状态，优化结果
+                # 11. 数据库操作，保存任务状态，优化结果
                 task.status = "done"
                 await task.save()
 
@@ -840,19 +872,20 @@ async def submit_optimization_params(
     # 查询指定task_id的优化结果
     optimization_result = await OptimizationResults.filter(task_id=request_data.task_id).first()
     model_path = os.path.dirname(optimization_result.optimized_cad_file_path)
-    algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
-    # 检查算法服务健康状态
-    health_status = await algorithm_client.check_health()
-    if health_status.status != "healthy":
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Algorithm service is not healthy."
-        )
+    # algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
+    # # 检查算法服务健康状态
+    # health_status = await algorithm_client.check_health()
+    # if health_status.status != "healthy":
+    #     raise HTTPException(
+    #         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    #         detail="Algorithm service is not healthy."
+    #     )
     try:
 
-        response = await algorithm_client.send_parameter(model_path, request_data.params)
-
-        await algorithm_client.close  ()  # 关闭客户端连接
+        # response = await algorithm_client.send_parameter(model_path, request_data.params)
+        control_file = os.path.join(model_path, "control.txt")
+        write_key(control_file, "command", "8")
+        # await algorithm_client.close  ()  # 关闭客户端连接
         # 模拟成功响应
         return {"message": "Parameters received successfully and printed to console."}
     except Exception as e:

@@ -66,10 +66,6 @@ exclude_patterns = [
     "files\\**\\*"      # Windows递归匹配（可选）
 ]
 
-# --- 新增：挂载静态文件目录 ---
-# 创建 files 目录（如果不存在）
-os.makedirs("files", exist_ok=True)
-app.mount("/files", StaticFiles(directory="files"), name="files")
 
 
 # gengerate the ASGI app for MCP
@@ -91,7 +87,10 @@ app = FastAPI(lifespan=combined_lifespan)
 # Mount the MCP server
 app.mount("/analytics",mcp_app)
 
-
+# --- 新增：挂载静态文件目录 ---
+# 创建 files 目录（如果不存在）
+os.makedirs("files", exist_ok=True)
+app.mount("/files", StaticFiles(directory="files"), name="files")
 
 # CORS 中间件配置
 origins = [
