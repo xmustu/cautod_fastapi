@@ -5,9 +5,9 @@ import uvicorn
 import os
 
 from apps.router import router
-from apps.app01 import user
-from apps.app02 import geometry
-from apps.app03 import optimize
+from apps.user import user
+from apps.geometry import geometry
+from apps.optimize import optimize
 from apps.tasks import router as tasks_router
 from apps.chat import router as chat_router
 from core.middleware import count_time_middleware,FullRequestLoggerMiddleware

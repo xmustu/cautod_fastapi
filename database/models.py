@@ -1,11 +1,101 @@
-from tortoise.models import Model
-from tortoise import fields
+from tortoise import fields, Model
+from tortoise.fields.relational import ForeignKeyRelation
 
-class User(Model):
+# 用户模型
+class Users(Model):
+    user_id = fields.IntField(pk=True, auto_increment=True)
+    username = fields.CharField(max_length=255, default="user")
+    email = fields.CharField(max_length=255, unique=True)
+    password_hash = fields.CharField(max_length=255)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    #is_activate = fields.BooleanField(default=True)
+    #role_id = fields.ForeignKeyField('models.Role', related_name='users',description="用户角色")
+    # 任务关系（可选）
+    #tasks: list["Tasks"] = fields.ReverseRelation["Tasks"]
 
-    __tablename__ = "users"
+    class Meta:
+        table = "users"
 
-    user_id = fields.IntField(pk=True)
-    name = fields.CharField(max_length=256, description="昵称")
-    password_hash = fields.CharField(max_length=256, description="密码")
-    created_at = fields.TimeField(description="注册时间")
+class Role(Model):
+    role_id = fields.IntField(pk=True, auto_increment=True)
+    permissions = fields.CharField(max_length=255, default="read,write")
+    user_id = fields.IntField(description="用户ID")
+
+    class Meta:
+        table = "roles"
+# 会话模型
+class Conversations(Model):
+    conversation_id = fields.CharField(max_length=64, pk=True)
+    user_id = fields.IntField()
+    title = fields.CharField(max_length=255, default="新会话")
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    # 外部关系（逻辑关联）
+    tasks: list["Tasks"] = fields.ReverseRelation["Tasks"]
+
+    class Meta:
+        table = "conversations"
+
+
+# 任务模型
+class Tasks(Model):
+    task_id = fields.IntField(pk=True, auto_increment=True)
+    conversation = fields.ForeignKeyField(
+        "models.Conversations", related_name="tasks", to_field="conversation_id", on_delete=fields.CASCADE
+    )
+    user_id = fields.IntField()
+    dify_conversation_id = fields.CharField(max_length=255, null=True)  # Dify 对话 ID
+    task_type = fields.CharField(max_length=50)  # 'geometry', 'retrieval', 'optimize'
+    status = fields.CharField(max_length=20, default="pending")
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    # 外部关系（逻辑关联）
+    user: ForeignKeyRelation[Users] = None  # 逻辑关联
+    # conversation: ForeignKeyRelation[Conversations] = None  # 逻辑关联 - This is now handled by the ForeignKeyField
+    geometry_result: ForeignKeyRelation["GeometryResults"] = fields.ReverseRelation["GeometryResults"]
+    optimization_result: ForeignKeyRelation["OptimizationResults"] = fields.ReverseRelation["OptimizationResults"]
+    error_logs: list["ErrorLogs"] = fields.ReverseRelation["ErrorLogs"]
+
+    class Meta:
+        table = "tasks"
+        #indexes = [
+        #    ("idx_conversation_id", ["conversation_id"]),
+        #    ("idx_user_id", ["user_id"])
+        #]
+
+
+# 几何建模结果模型
+class GeometryResults(Model):
+    geometry_id = fields.IntField(pk=True, auto_increment=True)
+    task_id = fields.IntField()
+    cad_file_path = fields.TextField(null=True)
+    code_file_path = fields.TextField(null=True)
+    preview_image_path = fields.TextField(null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    # 外部关系（逻辑关联）
+    task: ForeignKeyRelation[Tasks] = None  # 逻辑关联
+
+    class Meta:
+        table = "geometry_results"
+        #indexes = [("idx_task_id", ["task_id"])]
+
+
+# 优化结果模型
+class OptimizationResults(Model):
+    optimization_id = fields.IntField(pk=True, auto_increment=True)
+    task_id = fields.IntField()
+    optimized_cad_file_path = fields.TextField(null=True)
+    best_params = fields.JSONField(null=True)
+    final_volume = fields.FloatField(null=True)
+    final_stress = fields.FloatField(null=True)
+    constraint_satisfied = fields.BooleanField(null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    # 外部关系（逻辑关联）
+    task: ForeignKeyRelation[Tasks] = None  # 逻辑关联
+
+    class Meta:
+        table = "optimization_results"
+        #indexes = [("idx_task_id", ["task_id"])]

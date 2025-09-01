@@ -1,7 +1,7 @@
 import asyncio
 from tortoise import Tortoise, run_async
 
-from database.models_1 import Tasks, Conversations
+from database.models import Tasks, Conversations
 from settings import TORTOISE_ORM_sqlite
 
 async def cleanup():

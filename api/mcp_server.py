@@ -11,7 +11,7 @@ from fastapi import FastAPI
 import time 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
-from database.models_1 import OptimizationResults, Tasks, GeometryResults
+from database.models import OptimizationResults, Tasks, GeometryResults
 
 
 async def obtain_work_dir(dify_conversation_id: str) -> Path:
@@ -152,6 +152,7 @@ def mcp_cadquery(app: FastAPI):
             print(f"创建文件夹失败: {e}")
         script_py = work_dir / "script.py"
         model_step = work_dir / "model.step"
+        model_stl = work_dir / "model.stl"
         error_txt = work_dir / "error.txt"
         image_png = work_dir / "Oblique_View.png"
 
@@ -159,6 +160,7 @@ def mcp_cadquery(app: FastAPI):
         code = cadquery_code
         if "result.export" not in code:
             code += f"\nresult.export(r'{model_step}')"
+            code += f"\ncq.exporters.export(result, r'{model_stl}', 'STL')"
             code += "\nfrom cadquery.vis import show"
             # code += "\nimport pyvista as pv  # cadquery的可视化依赖"
             # code += "\nfrom cadquery import exporters"

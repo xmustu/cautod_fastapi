@@ -1,7 +1,7 @@
 import asyncio
 from tortoise import Tortoise, run_async
 
-from database.models_1 import Users
+from database.models import Users
 from settings import TORTOISE_ORM_sqlite
 
 async def update_user():
