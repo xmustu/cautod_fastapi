@@ -7,6 +7,7 @@ from fastapi import Depends
 from fastapi import status
 from fastapi import Form
 from fastapi import HTTPException
+from fastapi import Response
 from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordBearer
 from core.authentication import authenticate
@@ -62,6 +63,68 @@ def home(request: Request, alert: Optional[str] = None):
         "home.html", {"request": request, "alert": alert}
     )
 
+@router.post("/model", response_class=Response)
+async def get_model(request: FileRequest,
+              current_user: User = Depends(get_current_active_user)):
+    
+    # 验证文件归属
+    task = await Tasks.get_or_none(
+        task_id=request.task_id,
+        user_id=current_user.user_id,
+        conversation_id=request.conversation_id
+    )
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="model does not belong to the current user/conversation."
+        )
+    # 传递模型文件
+    try:
+        # 构建文件路径
+        #file_path = Path("files") / str(request.conversation_id) / str(request.task_id) / request.file_name
+        parts = ["files", str(request.conversation_id), str(request.task_id), request.file_name]
+        file_path =  "/".join(parts)
+        print(f"请求模型文件地址: {file_path}")
+        # 验证文件存在
+        if not Path(file_path).is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"STL 文件不存在: {file_path}"
+            )
+        # 简单校验扩展名
+        if not file_path.lower().endswith(".stl"):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="仅支持 .stl 格式文件"
+            )
+
+        with open(file_path, "rb") as f:
+            stl_content = f.read()
+        return Response(content=stl_content, media_type="application/sla")
+    
+    # 文件级错误
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"无权限读取文件: {e}"
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"文件读取失败: {e}"
+        )
+    # 兜底
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"未知错误: {e}"
+        )
+    finally:
+        pass
+        # 确保临时文件被删除
+        #if os.path.exists(file_path):
+        #    os.unlink(file_path)
+        #)
 @router.post("/upload_file", summary="上传文件")
 async def upload_file(*, 
                 file: UploadFile,
@@ -113,7 +176,8 @@ async def download_file(
         # # 提取纯文件名用于响应头
         # response_file_name = os.path.basename(safe_path)
         
-        # 动态推断 MIME 类型
+        
+        # 验证归属权
         task = await Tasks.get_or_none(
         task_id=request.task_id,
         user_id=current_user.user_id,
@@ -132,6 +196,7 @@ async def download_file(
         # 构建目标目录路径：上一级目录/files/会话ID
         task_dir = parent_dir / "files" / str(request.conversation_id) / str(request.task_id)
         file = task_dir / request.file_name
+        # 动态推断 MIME 类型
         media_type, _ = mimetypes.guess_type(file)
         print(f"Guessed MIME type for {request.file_name}: {media_type}") # Debug log
         if media_type is None:
