@@ -3,6 +3,8 @@ from pydantic import Field
 from pydantic import field_validator
 from typing import Optional, Dict, List, AsyncGenerator, Union, List, Literal,Any
 from .common import FileItem
+
+
 class GeometryRequest(BaseModel):
     """几何建模请求模型"""
     # 示例字段

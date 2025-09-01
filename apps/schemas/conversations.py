@@ -8,6 +8,8 @@ from .geometry import SuggestedQuestionsResponse
 
 
 # 定义请求和响应模型
+
+# 创建会话
 class ConversationCreateRequest(BaseModel):
     title: str = Field(..., max_length=100, description="新会话的标题")
 

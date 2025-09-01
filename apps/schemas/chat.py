@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
+# 对话消息模型
 class Message(BaseModel):
     role: str
     content: str

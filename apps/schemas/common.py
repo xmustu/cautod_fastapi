@@ -8,7 +8,7 @@ class FileItem(BaseModel):
     file_size: Optional[int] = Field(None, description="文件大小（字节）")
 
 
-
+# 请求文件模型
 class FileRequest(BaseModel):
     task_id: int
     conversation_id: str
