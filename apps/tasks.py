@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 import asyncio
 import json
 from datetime import datetime
-
+from tortoise.transactions import in_transaction
 from core.authentication import get_current_active_user, User
 from database.models import Tasks, Conversations, GeometryResults, OptimizationResults
 
@@ -159,153 +159,177 @@ async def execute_task(
     request: TaskExecuteRequest,
     current_user: User = Depends(get_current_active_user)
 ):
-    print("request.file_url: ", request.file_url)
-    redis_client = global_request.app.state.redis
-    """
-    根据 task_type 执行一个已创建的任务。
-    """
-    print(f"--- Received request to execute task: {request.task_id} ({request.task_type}) ---")
-    # 验证任务是否存在且属于当前用户
-    task = await Tasks.get_or_none(
-        task_id=request.task_id, 
-        user_id=current_user.user_id
-    )
-    if not task or task.conversation_id != request.conversation_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found or does not belong to the current user/conversation."
-        )
-
-
-    if task.status != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Task {task.task_id} is not in a valid state to start execution. Current state: {task.status}"
-        )
-
-    # 更新任务状态为“处理中”
-    task.status = "running"
-    await task.save()
-
-
-    # --- 新增：在执行任务前，保存用户的消息 ---
-    if request.query:
-        user_message = Message(
-            role="user",
-            content=request.query,
-            timestamp=datetime.now()
-        )
-        await save_or_update_message_in_redis(
-            user_id=current_user.user_id,
-            task_id=request.task_id,
-            task_type=request.task_type,
-            conversation_id=request.conversation_id,
-            message=user_message,
-            redis_client=redis_client
-        )
-    # --- 修改结束 ---
-
-    assistant_message = {
-        "role": "assistant",
-    }
-
-    # 时间戳采用秒级+3位随机数，避免同一秒内冲突
-    timestamp = f"{int(time.time())}_{uuid.uuid4().hex[:3]}"
-
-    file_name = f'{current_user.user_id}_{request.conversation_id}_{request.task_id}_{timestamp}'
-    
-    task.file_name = file_name  # 保存文件名到任务实例中
-    await task.save()
-    
-    combinde_query = request.query #+ f". 我希望生成的.py 和 .step 文件的命名为：{file_name}" 
-    # + r'\n请注意文件保存路径为"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\mcp_out"'
-    print("combinde_query: ", combinde_query)
-    # 根据任务类型路由到不同的处理逻辑
-    
-    if request.task_type == "geometry":
-        
-        return StreamingResponse(
-            geometry_stream_generator(
-                request,
-                current_user,
-                redis_client,
-                combinde_query,
-                task
-            ), 
-            media_type="text/event-stream"
-        )
-
-    elif request.task_type == "retrieval":
-    
-        return StreamingResponse(
-            retrieval_stream_generator(
-                request,
-                current_user,
-                redis_client,
-                combinde_query,
-                task
-            ), 
-            media_type="text/event-stream"
-        )
-
-
-    elif request.task_type == "optimize":
+    try:
+        print("request.file_url: ", request.file_url)
+        redis_client = global_request.app.state.redis
         """
-        将 swg_path 指向的单个文件复制到目录。
-        如果同名文件已存在，则跳过。
-        弃用，算法测已改进
+        根据 task_type 执行一个已创建的任务。
         """
-        # swg_path = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\machweijfiweowef.swp"
-        # if not os.path.isfile(swg_path):
-        #     print(f"错误：{swg_path} 不存在或不是文件")
-        #     return
-
-        # dst_path = os.path.join(os.path.dirname(request.file_url), os.path.basename(swg_path))
-
-        # if os.path.exists(dst_path):
-        #     print(f"跳过：{dst_path} 已存在")
-        # else:
-        #     shutil.copy2(swg_path, dst_path)   # copy2 保留元数据
-        #     print(f"已复制：{swg_path} -> {dst_path}")
-
-        
-        return StreamingResponse(
-            optimize_stream_generator(
-                request,
-                current_user,
-                redis_client,
-                combinde_query,
-                task
-            ), 
-            media_type="text/event-stream"
-        )
-
-    else:
-        #模拟保存生成的消息到数据库, 仅使用示例
-        assistant_message["content"] = "Unknown task type. Please check your request."
-        # 保存助手消息到Redis
-        message = Message(
-            role="assistant",
-            content=assistant_message["content"],
-            timestamp=datetime.now()
-        )
-        print("结果回复信息: ", message)
-        await save_message_to_redis(
-                    user_id=current_user.user_id,
-                    task_id=request.task_id,
-                    task_type=request.task_type,
-                    conversation_id=request.conversation_id,
-                    message=message,
-                    redis_client=redis_client
+        print(f"--- Received request to execute task: {request.task_id} ({request.task_type}) ---")
+        # 数据库事务
+        async with in_transaction() as conn:
+            # 验证任务是否存在且属于当前用户
+            task = await Tasks.get_or_none(
+                task_id=request.task_id, 
+                user_id=current_user.user_id
+            )
+            if not task or task.conversation_id != request.conversation_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Task not found or does not belong to the current user/conversation."
                 )
+
+            # print("通过验证了吗")
+            # if task.status != "pending":
+            #     raise HTTPException(
+            #         status_code=status.HTTP_400_BAD_REQUEST,
+            #         detail=f"Task {task.task_id} is not in a valid state to start execution. Current state: {task.status}"
+            #     )
+            print("通过status验证了吗")
+            # 检查是否已经有一个 "optimize" 类型的任务在运行
+            if request.task_type == "optimize":
+                running_optimize_task = await Tasks.filter(
+                    # user_id=current_user.user_id,
+                    task_type="optimize",
+                    status="running"
+                ).first()
+                
+                if running_optimize_task:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Task {running_optimize_task.task_id} is already running. Only one 'optimize' task can run at a time."
+                    )
+            print("通过optimize验证了吗")
+            # 更新任务状态为“处理中”
+            task.status = "running"
+            await task.save()
+
+        print("出事务")
+        # --- 新增：在执行任务前，保存用户的消息 ---
+        if request.query:
+            user_message = Message(
+                role="user",
+                content=request.query,
+                timestamp=datetime.now()
+            )
+            await save_or_update_message_in_redis(
+                user_id=current_user.user_id,
+                task_id=request.task_id,
+                task_type=request.task_type,
+                conversation_id=request.conversation_id,
+                message=user_message,
+                redis_client=redis_client
+            )
+        # --- 修改结束 ---
+
+        assistant_message = {
+            "role": "assistant",
+        }
+
+        # 时间戳采用秒级+3位随机数，避免同一秒内冲突
+        timestamp = f"{int(time.time())}_{uuid.uuid4().hex[:3]}"
+
+        file_name = f'{current_user.user_id}_{request.conversation_id}_{request.task_id}_{timestamp}'
         
+        task.file_name = file_name  # 保存文件名到任务实例中
+        await task.save()
+        
+        combinde_query = request.query #+ f". 我希望生成的.py 和 .step 文件的命名为：{file_name}" 
+        # + r'\n请注意文件保存路径为"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\mcp_out"'
+        print("combinde_query: ", combinde_query)
+        # 根据任务类型路由到不同的处理逻辑
+        
+        if request.task_type == "geometry":
+            
+            return StreamingResponse(
+                geometry_stream_generator(
+                    request,
+                    current_user,
+                    redis_client,
+                    combinde_query,
+                    task
+                ), 
+                media_type="text/event-stream"
+            )
+
+        elif request.task_type == "retrieval":
+        
+            return StreamingResponse(
+                retrieval_stream_generator(
+                    request,
+                    current_user,
+                    redis_client,
+                    combinde_query,
+                    task
+                ), 
+                media_type="text/event-stream"
+            )
+
+
+        elif request.task_type == "optimize":
+            """
+            将 swg_path 指向的单个文件复制到目录。
+            如果同名文件已存在，则跳过。
+            弃用，算法测已改进
+            """
+            # swg_path = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\machweijfiweowef.swp"
+            # if not os.path.isfile(swg_path):
+            #     print(f"错误：{swg_path} 不存在或不是文件")
+            #     return
+
+            # dst_path = os.path.join(os.path.dirname(request.file_url), os.path.basename(swg_path))
+
+            # if os.path.exists(dst_path):
+            #     print(f"跳过：{dst_path} 已存在")
+            # else:
+            #     shutil.copy2(swg_path, dst_path)   # copy2 保留元数据
+            #     print(f"已复制：{swg_path} -> {dst_path}")
+
+            
+            return StreamingResponse(
+                optimize_stream_generator(
+                    request,
+                    current_user,
+                    redis_client,
+                    combinde_query,
+                    task
+                ), 
+                media_type="text/event-stream"
+            )
+
+        else:
+            #模拟保存生成的消息到数据库, 仅使用示例
+            assistant_message["content"] = "Unknown task type. Please check your request."
+            # 保存助手消息到Redis
+            message = Message(
+                role="assistant",
+                content=assistant_message["content"],
+                timestamp=datetime.now()
+            )
+            print("结果回复信息: ", message)
+            await save_message_to_redis(
+                        user_id=current_user.user_id,
+                        task_id=request.task_id,
+                        task_type=request.task_type,
+                        conversation_id=request.conversation_id,
+                        message=message,
+                        redis_client=redis_client
+                    )
+            
+            task.status = "failed"
+            await task.save()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown task type: {request.task_type}"
+            )
+    except Exception as e:
+        # 更新任务状态为 "failed"
         task.status = "failed"
         await task.save()
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown task type: {request.task_type}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Task execution failed: {str(e)}"
         )
-
 
 @router.post("/optimize/submit-params", summary="提交优化参数")
 async def submit_optimization_params(
