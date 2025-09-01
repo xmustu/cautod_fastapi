@@ -8,9 +8,10 @@ import json
 
 import redis.asyncio as aioredis
 from core.authentication import get_current_active_user, User
-from database.models_1 import Tasks
-from apps.app02 import SSETextChunk, SSEResponse
+from database.models import Tasks
 
+from apps.schemas import SSETextChunk, SSEResponse
+from apps.schemas import Message
 
 from config import Settings
 from datetime import datetime
@@ -21,14 +22,6 @@ router = APIRouter(
 )
 
 settings = Settings()
-
-class Message(BaseModel):
-    role: str
-    content: str
-    timestamp: datetime
-    metadata: Optional[Dict[str, Any]] = None
-    parts: Optional[List[Dict[str, Any]]] = None
-    status: Optional[str] = "done" # 新增字段，默认为 'done'
 
 
 def get_message_key(user_id: str, task_id: str) -> str:

@@ -1,7 +1,7 @@
 import asyncio
 import json 
-from database.models_1 import Conversations
-from database.models_1 import Tasks
+from database.models import Conversations
+from database.models import Tasks
 from apps.schemas import Message
 from core.authentication import User
 from datetime import datetime

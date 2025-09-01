@@ -7,7 +7,7 @@ from fastapi import Depends
 from fastapi.exceptions import HTTPException
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from database.models_1 import *
+from database.models import *
 from core.hashing import Hasher
 from core.authentication import create_token
 from core.authentication import  User

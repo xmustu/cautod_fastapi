@@ -10,10 +10,10 @@ from pydantic import field_validator
 from fastapi import Depends
 import uuid
 from datetime import datetime
-from database.models_1 import Conversations
+from database.models import Conversations
 from core.authentication import get_current_active_user
 from core.authentication import User
-from database.models_1 import Tasks
+from database.models import Tasks
 
 import json 
 import http.client
@@ -60,7 +60,7 @@ geometry = APIRouter()
 
 from apps.chat import save_or_update_message_in_redis
 import asyncio
-from database.models_1 import Tasks, Conversations, GeometryResults
+from database.models import Tasks, Conversations, GeometryResults
 
 async def geometry_stream_generator(
         request: TaskExecuteRequest,

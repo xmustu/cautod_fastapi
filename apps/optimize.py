@@ -22,8 +22,8 @@ from pathlib import Path
 from config import Settings
 from datetime import datetime
 from core.authentication import User
-from database.models_1 import Tasks
-from database.models_1 import OptimizationResults
+from database.models import Tasks
+from database.models import OptimizationResults
 from apps.chat import  save_or_update_message_in_redis
 from apps.schemas import Message
 from apps.schemas import (

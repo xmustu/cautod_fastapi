@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from fastapi import HTTPException
 from fastapi import status
 from fastapi import Form
-from database.models_1 import *
+from database.models import *
 from core.hashing import Hasher
 from pydantic import BaseModel
 from jwt.exceptions import InvalidTokenError

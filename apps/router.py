@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordBearer
 from core.authentication import authenticate
 from core.authentication import get_current_active_user, User
-from database.models_1 import *
+from database.models import *
 import os
 import mimetypes
 from apps.chat import get_message_key, get_user_task_key
