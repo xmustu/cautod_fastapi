@@ -1,0 +1,92 @@
+{
+    "description": {
+        "summary": "uvicorn_config.json",
+        "details": "该文件是 Uvicorn 的日志配置文件，使用 Python 的标准日志配置格式（`logging.config.dictConfig`）定义了日志的格式化、处理方式和日志器。",
+        "purpose": [
+            "日志格式化:定义日志的输出格式，包括时间戳、线程名、日志级别、客户端地址、请求行等信息。",
+            "日志处理:支持将日志输出到控制台（`StreamHandler`）和文件（`TimedRotatingFileHandler`）。日志文件按天轮换（`when: midnight`），最多保留 10 个备份。",
+            "日志器配置:配置了 `uvicorn`、`uvicorn.error` 和 `uvicorn.access` 三个日志器，分别用于普通日志、错误日志和访问日志。"
+        ],
+        "configuration": {
+            "formatters": [
+                "`default`:普通日志的格式化器，包含时间、线程名、日志级别和消息内容。",
+                "`access`:访问日志的格式化器，包含时间、线程名、客户端地址、请求行和状态码。",
+                "`error`:错误日志的格式化器，包含时间、线程名、日志级别和错误消息内容。"
+            ],
+            "handlers": [
+                "`default`:将普通日志输出到标准错误流（`sys.stderr`）。",
+                "`default_file`:将普通日志写入 `./logs/app.log` 文件，按天轮换。",
+                "`access`:将访问日志输出到标准输出流（`sys.stdout`）。",
+                "`access_file`:将访问日志写入 `./logs/access.log` 文件，按天轮换。",
+                "`error`:将错误日志输出到标准错误流（`sys.stderr`）。",
+                "`error_file`:将错误日志写入 `./logs/error.log` 文件，按天轮换。"
+            ],
+            "loggers": [
+                "`uvicorn`:普通日志，使用 `default` 和 `default_file` 处理器，日志级别为 `INFO`。",
+                "`uvicorn.error`:错误日志，使用 `error` 和 `error_file` 处理器，日志级别为 `INFO`。",
+                "`uvicorn.access`:访问日志，使用 `access` 和 `access_file` 处理器，日志级别为 `INFO`。"
+            ]
+        },
+        "usage": [
+            "加载配置:在 Uvicorn 启动时，通过 `--log-config` 参数指定该配置文件。",
+            "示例:`uvicorn main:app --log-config uvicorn_config.json`"
+        ]
+    },
+    "version": 1,
+    "disable_existing_loggers": false,
+    "formatters": {
+        "default": {
+            "()": "uvicorn.logging.DefaultFormatter",
+            "fmt": "%(asctime)s %(threadName)s %(levelprefix)s  %(message)s",
+            "use_colors": null
+        },
+        "access": {
+            "()": "uvicorn.logging.AccessFormatter",
+            "fmt": "%(asctime)s %(threadName)s %(levelprefix)s %(client_addr)s - '%(request_line)s' %(status_code)s"
+        }
+    },
+    "handlers": {
+        "default": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr"
+        },
+        "default_file": {
+            "formatter": "default",
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": "./logs/app.log",
+            "when": "midnight",
+            "encoding": "utf-8",
+            "backupCount": 10
+        },
+        "access": {
+            "formatter": "access",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout"
+        },
+        "access_file": {
+            "formatter": "access",
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "filename": "./logs/access.log",
+            "when": "midnight",
+            "encoding": "utf-8",
+            "backupCount": 10
+        }
+    },
+    "loggers": {
+        "uvicorn": {
+            "handlers": ["default", "default_file"],
+            "level": "INFO",
+            "propagate": false
+        },
+        "uvicorn.error": {
+            "level": "INFO",
+            "propagate": false
+        },
+        "uvicorn.access": {
+            "handlers": ["access", "access_file"],
+            "level": "INFO",
+            "propagate": false
+        }
+    }
+}

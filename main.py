@@ -1,3 +1,4 @@
+import json
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -123,6 +124,9 @@ app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
 app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
 
-
+# 显式加载日志配置文件
+with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:
+    log_config = json.load(f)
+    
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="127.0.0.1", port=8080,  log_level="debug",reload=True, reload_excludes=exclude_patterns)
+    uvicorn.run("main:app", host="127.0.0.1", log_config=log_config, port=8080,  log_level="debug",reload=True, reload_excludes=exclude_patterns)
