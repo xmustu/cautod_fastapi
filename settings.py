@@ -12,7 +12,7 @@ TORTOISE_ORM_sqlite = {
         "models": {
    
    
-            "models": ["database.models_1","aerich.models"],
+            "models": ["database.models","aerich.models"],
             "default_connection": "default",
         },
     },

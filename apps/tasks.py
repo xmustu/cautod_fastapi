@@ -223,27 +223,30 @@ async def execute_task(
     # 根据任务类型路由到不同的处理逻辑
     
     if request.task_type == "geometry":
-        geometry_stream_generator(
-            request,
-            current_user,
-            redis_client,
-            combinde_query,
-            task
+        
+        return StreamingResponse(
+            geometry_stream_generator(
+                request,
+                current_user,
+                redis_client,
+                combinde_query,
+                task
+            ), 
+            media_type="text/event-stream"
         )
-
-        return StreamingResponse(geometry_stream_generator(), media_type="text/event-stream")
 
     elif request.task_type == "retrieval":
-        retrieval_stream_generator(
-            request,
-            current_user,
-            redis_client,
-            combinde_query,
-            task
+    
+        return StreamingResponse(
+            retrieval_stream_generator(
+                request,
+                current_user,
+                redis_client,
+                combinde_query,
+                task
+            ), 
+            media_type="text/event-stream"
         )
-
-
-        return StreamingResponse(retrieval_stream_generator(), media_type="text/event-stream")
 
 
     elif request.task_type == "optimize":
@@ -265,15 +268,17 @@ async def execute_task(
         #     shutil.copy2(swg_path, dst_path)   # copy2 保留元数据
         #     print(f"已复制：{swg_path} -> {dst_path}")
 
-        optimize_stream_generator(
-            request,
-            current_user,
-            redis_client,
-            combinde_query,
-            task
+        
+        return StreamingResponse(
+            optimize_stream_generator(
+                request,
+                current_user,
+                redis_client,
+                combinde_query,
+                task
+            ), 
+            media_type="text/event-stream"
         )
-        print("执行完了吗")
-        return StreamingResponse(optimize_stream_generator(), media_type="text/event-stream")
 
     else:
         #模拟保存生成的消息到数据库, 仅使用示例

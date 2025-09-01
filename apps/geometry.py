@@ -28,6 +28,11 @@ from apps.schemas import FileItem
 from apps.schemas import Message
 from apps.schemas import MessageRequest
 from apps.schemas import (
+    ConversationCreateRequest,
+    ConversationResponse,
+    ConversationOut
+)
+from apps.schemas import (
     MessageChunk,
     MessageFileChunk,
     MessageEndChunk,
@@ -471,25 +476,6 @@ async def geometry_home():
     return {"message": "Geometry modeling home page"}
 
 
-
-
-# 定义请求和响应模型
-class ConversationCreateRequest(BaseModel):
-    title: str = Field(..., max_length=100, description="新会话的标题")
-
-class ConversationResponse(BaseModel):
-    conversation_id: str
-    user_id: int
-    title: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True # Pydantic V2, or orm_mode = True for V1
-
-# ---下一轮建议问题的模型-----
-class SuggestedQuestionsResponse(BaseModel):
-    result: str
-    data: List[str]
 
 
 
