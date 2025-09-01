@@ -13,18 +13,14 @@ from fastapi.security import OAuth2PasswordBearer
 from core.authentication import authenticate
 from core.authentication import get_current_active_user, User
 from database.models_1 import *
-from .schemas import ConversationOut
 import os
 import mimetypes
 from apps.chat import get_message_key, get_user_task_key
 from pydantic import BaseModel
 from pathlib import Path
 
-class FileRequest(BaseModel):
-    task_id: int
-    conversation_id: str
-    file_name: str
-
+from apps.schemas import FileRequest
+from apps.schemas import ConversationOut
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()

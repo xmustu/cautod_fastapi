@@ -17,70 +17,309 @@ import websockets
 import asyncio
 import json
 import os
+import aiofiles
+from pathlib import Path
+from config import Settings
+from datetime import datetime
+from core.authentication import User
+from database.models_1 import Tasks
+from database.models_1 import OptimizationResults
+from apps.chat import  save_or_update_message_in_redis
+from apps.schemas import Message
+from apps.schemas import (
+    OptimizeRequest,
+    UnitInfo,
+    OptimizeResult,
+    AlgorithmRequest,
+    TaskStatus,
+    HealthStatus
+)
+from apps.schemas import (
+    TaskExecuteRequest,
+    GenerationMetadata,
+    SSEConversationInfo,
+    SSETextChunk,
+    SSEResponse,
+    PartData,
+    SSEPartChunk,
+    SSEImageChunk
+)
 
+settings = Settings()
 
 optimize = APIRouter()
+
+async def optimize_stream_generator(
+        request: TaskExecuteRequest,
+        current_user: User,
+        redis_client,
+        combinde_query,
+        task: Tasks
+):
+
+            assistant_message = Message(
+                role="assistant",
+                content="",
+                timestamp=datetime.now(),
+                parts=[],
+                metadata={},
+                status="in_progress"
+            )
+            # 初始化状态标识
+            task_terminate_event = asyncio.Event()  # 任务终止信号（用于两个并行任务通信）
+            control_monitor_result = {"success": None, "message": ""}  # 控制监听结果存储
+            try:
+                 # 1. 立即保存初始的 "in_progress" 消息,
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id,
+                    task_id=request.task_id, 
+                    task_type=request.task_type,
+                    conversation_id=request.conversation_id, 
+                    message=assistant_message, 
+                    redis_client=redis_client
+                )
+
+                # 2. 发送会话和任务信息
+                conversation_info_data = SSEConversationInfo(
+                    conversation_id=request.conversation_id, 
+                    task_id=str(request.task_id)
+                )
+                sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
+                yield sse_conv_info
+
+                # # 3. 模拟流式发送文本块并更新Redis
+                # FILE_PATH = r"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\846ac6da-3e33-419e-ba9f-de37a2a89df0\426\backend_log.txt"
+                # with open(FILE_PATH, "rb") as f:
+                #     full_answer_source = f.read().decode("utf-8")
+                
+                # for i in range(0, len(full_answer_source), 5):
+                #     chunk = full_answer_source[i:i+5]
+                #     assistant_message.content += chunk
+                #     assistant_message.timestamp = datetime.now()
+                    
+                #     text_chunk_data = SSETextChunk(text=chunk)
+                #     yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                    
+                #     await save_or_update_message_in_redis(
+                #         user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                #         conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                #     )
+                #     await asyncio.sleep(0.05)
+
+                # 3. 准备模型路径和优化结果记录
+                model_path = rf"{request.file_url}" if request.file_url else r".\AutoFrame.SLDPRT"
+                print("optimize model_path: ", model_path)
+
+                # 初始化或更新优化结果记录
+                optimize_result = await OptimizationResults.get_or_none(task_id=task.task_id)
+                print("找到优化结果吗？", optimize_result)
+                update_data = {
+                    "optimized_cad_file_path": model_path,  
+                }
+                if optimize_result:
+                    # 如果存在则更新
+                    await optimize_result.update_from_dict(update_data).save()
+                else:
+
+                    optimize_result = await OptimizationResults.create(
+                        task_id=task.task_id,
+                        **update_data
+                )
+                print("优化结果: ", optimize_result)
+                await optimize_result.save()
+
+                # 4. 准备算法请求
+                request_to_algorithm = AlgorithmRequest(
+                    task_id=str(task.task_id),
+                    conversation_id = str(request.conversation_id),
+                    geometry_description="",
+                    parameters={
+                        "model_path": model_path,
+                    }
+                )
+                algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
+                # 检查算法服务健康状态
+                health_status = await algorithm_client.check_health()
+                if health_status.status != "healthy":
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Algorithm service is not healthy."
+                    )
+                
+
+                # 5. 提交算法服务执行优化任务
+                task_status = await algorithm_client.run_algorithm(request_to_algorithm)
+                task.status = task_status.status
+                await task.save()
+                print(f"Algorithm service returned status: {task.status}")
+
+                # 6. 创建控制文件监听回调
+                monitor_callback = create_task_monitor_callback(
+                    model_path = model_path,
+                    client = algorithm_client,
+                )
+                # 订阅任务启动通知
+                status_monitor_task = asyncio.create_task(
+                      monitor_callback()
+                )
+                print("出来了吗")
+                # 7. 异步监控日志文件，提取指定任务的日志并生成SSE格式响应
+
+                full_answer = ""
+                LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
+                if not LOG_FILE_PATH.exists():
+                    with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
+                        f.write("")  # 创建空文件
+
+                # 记录初始文件位置
+                start_position = LOG_FILE_PATH.stat().st_size
+                async with aiofiles.open(LOG_FILE_PATH, "r",encoding="utf-8") as log_file:
+
+                    await log_file.seek(start_position) 
+
+                    while not task_terminate_event.is_set():
+                        # 1. 检查任务状态
+                        try:
+                            pass
+                        except:
+                            pass
+
+                        #2. 读取新增日志
+                        line = await log_file.readline()
+                        if line:
+                            if not line.endswith('\n'):
+                                line += '\n'
+                            chunk = line #.replace("\\n", "\n")
+
+                            assistant_message.content += chunk
+                            assistant_message.timestamp = datetime.now()
+
+                            text_chunk_data = SSETextChunk(text=chunk)
+                            sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+
+                            await save_or_update_message_in_redis(
+                                user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                                conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                            )
+                        
+                            yield sse_chunk
+                            await asyncio.sleep(0.05)  # 控制发送速度
+                        else:
+                            # 无新内容时等待
+                            await asyncio.sleep(0.05)
+
+                        full_answer += line + "\n\n"
+
+
+
+                # 确保状态监控任务完成
+                # if not status_monitor_task.done():
+                #     await status_monitor_task
+                print("执行这个close了吗")
+                await algorithm_client.close()  # 关闭算法客户端连接
+
+                # 8. 采用新的图片流式方案并更新Redis
+                mock_images = [
+                    {"path": rf"{request.conversation_id}/{request.task_id}/convergence_curve.png", "alt": "收敛曲线"},
+                    {"path": rf"{request.conversation_id}/{request.task_id}/parameter_distribution.png", "alt": "参数分布图"}
+                ]
+                print("要展示的图片： ", mock_images)
+                image_parts_for_redis = []
+                for img_data in mock_images:
+                    if os.path.exists(img_data["path"]):
+                        image_file_name = os.path.basename(img_data["path"])
+                        image_url = f"/files/{image_file_name}" # 修正：指向 /files 路由
+                        
+                        image_part = {"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": img_data["alt"]}
+                        assistant_message.parts.append(image_part)
+                        assistant_message.timestamp = datetime.now()
+
+                        # 调试：打印实际的文件路径
+                        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+                        project_root = os.path.dirname(current_file_dir)
+                        base_dir = os.path.join(project_root, "files")
+                        safe_path = os.path.abspath(os.path.join(base_dir, image_file_name))
+                        print(f"Attempting to serve image from: {safe_path}")
+
+                        # 使用 SSEImageChunk 发送图片信息
+                        image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=image_file_name, altText=img_data["alt"])
+                        yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+
+                        await save_or_update_message_in_redis(
+                            user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                            conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                        )
+
+                        await asyncio.sleep(0.1) # 恢复延迟
+                        
+                        # 准备存入Redis的数据
+                        #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": img_data["alt"]})
+
+                # 9. 发送结束消息
+                final_metadata = GenerationMetadata(
+                    cad_file=model_path,
+                    code_file="script.py",
+                    preview_image=None
+                )
+                final_response_data = SSEResponse(
+                    answer="".join(full_answer),
+                    metadata=final_metadata
+                )
+                
+                sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
+                yield sse_final
+
+                 # 10. 最后一次更新Redis，状态为 "done"
+                assistant_message.status = "done"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+
+                # 11. 数据库操作，保存任务状态，优化结果
+                task.status = "done"
+                await task.save()
+
+                optimize_result = await OptimizationResults.get_or_none(task_id=task.task_id)
+                print("找到优化结果吗？", optimize_result)
+                update_data = {
+                    "optimized_cad_file_path": model_path,  
+                }
+                if optimize_result:
+                    # 如果存在则更新
+                    await optimize_result.update_from_dict(update_data).save()
+                else:
+
+                    optimize_result = await OptimizationResults.create(
+                        task_id=task.task_id,**update_data
+                )
+                print("优化结果: ", optimize_result)
+                await optimize_result.save()
+
+            except Exception as e:
+                task.status = "failed"
+                await task.save()
+                print(f"Error during optimization task execution: {e}")
+
+                assistant_message.content += f"\n\n**任务执行出错**: {e}"
+                assistant_message.status = "failed"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+
+                error_data = json.dumps({"error": "An error occurred during task execution."})
+                yield f'event: error\ndata: {error_data}\n\n'
+
+
+
+
 
 @optimize.get("")
 async def optimize_home():
     return {"message": "Design optimization home page"}
-
-
-# 数据模型定义
-class OptimizeRequest(BaseModel):
-    """设计优化接口请求参数模型"""
-    method: int = Field(..., description="优化方法编号")
-    file: str = Field(..., description="待优化的CAD文件名称（如model.sldpart）")
-    constraints: Optional[Dict[str, Any]] = Field(None, description="优化约束条件")
-    parameters: Optional[List[str]] = Field(None, description="需要优化的参数列表")
-    target: Optional[str] = Field("minimize_volume", description="优化目标（如minimize_volume, minimize_stress）")
-    @field_validator('method')
-    def response_mode_must_be_streaming(cls, v):
-
-        if v not in (0, 1):
-            raise ValueError('method must be 0 or 1')
-        return v
-
-class UnitInfo(BaseModel):
-    """单位信息模型"""
-    volume: str = Field("m³", description="体积单位")
-    stress: str = Field("Pa", description="应力单位")
-
-class OptimizeResult(BaseModel):
-    """优化结果模型"""
-    optimized_file: str = Field(..., description="优化后的CAD文件路径或下载链接（.sldpart格式）")
-    best_params: List[float] = Field(..., description="优化得到的最优参数数组")
-    final_volume: float = Field(..., description="优化后CAD模型的体积")
-    final_stress: float = Field(..., description="优化后CAD模型的应力值")
-    unit: UnitInfo = Field(..., description="单位说明")
-    constraint_satisfied: bool = Field(..., description="是否满足约束条件")
-
-# class OptimizationParamsRequest(BaseModel):
-#     """接收优化参数的请求体模型"""
-#     conversation_id: str = Field(..., description="任务所属的对话ID")
-#     task_id: int = Field(..., description="任务ID")
-#     params: Dict[str, Dict[str, float]] = Field(..., description="优化参数及其范围，例如 {'param1': {'min': 0.1, 'max': 1.0}}")
-class OptimizationParamsRequest(BaseModel):
-    """接收优化参数的请求体模型"""
-    conversation_id: str = Field(..., description="任务所属的对话ID")
-    task_id: int = Field(..., description="任务ID")
-    params: Dict[str, Dict[str, Union[float, str]]] = Field(..., description="优化参数及其范围，例如 {'param1': {'min': 0.1, 'max': 1.0}}")
-
-# 数据模型（与算法侧对应）
-class AlgorithmRequest(BaseModel):
-    task_id: str
-    conversation_id: str
-    geometry_description: str = None
-    parameters: Optional[Dict[str, Any]] = None
-
-class TaskStatus(BaseModel):
-    task_id: str
-    status: str
-    message: Optional[str] = None
-
-class HealthStatus(BaseModel):
-    status: str
-    dependencies: Dict[str, str] 
 
 
 
