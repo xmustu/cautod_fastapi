@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Any, Union, Callable
+from typing import Optional, Dict, List, Any, Union, Callable, Set
 import json
 import os
 from datetime import datetime
@@ -160,16 +160,66 @@ async def optimize_stream_generator(
                 monitor_callback = create_task_monitor_callback(
                     model_path = model_path,
                     client = algorithm_client,
+                    task_terminate_event = task_terminate_event,
+
                 )
                 # 订阅任务启动通知
                 status_monitor_task = asyncio.create_task(
                       monitor_callback()
                 )
                 print("出来了吗")
-                # 7. 异步监控日志文件，提取指定任务的日志并生成SSE格式响应
+
+        
+                # 7.  异步监控软件截图文件
+                # 创建一个队列用于传递异步生成器产生的SSE chunks
+                image_event_queue = asyncio.Queue()
+                # 修改1：创建一个包装函数，消费异步生成器并将结果放入队列
+                async def consume_image_generator(request, screen_path, extensions, terminate_event, queue):
+                    """消费图片监控生成器，将结果放入队列"""
+                    try:
+                        # 异步迭代生成器产生的所有值
+                        async for sse_chunk in monitor_image_files(request, screen_path, extensions, terminate_event):
+                            # 将生成的chunk放入队列
+                            await queue.put(sse_chunk)
+                            
+                            # 检查是否需要终止
+                            if terminate_event.is_set():
+                                break
+                    except Exception as e:
+                        print(f"图片生成器消费出错: {str(e)}")
+                        # 可以放入错误信息到队列
+                        await queue.put(f"event: error\ndata: {str(e)}\n\n")
+                    finally:
+                        # 放入终止信号
+                        await queue.put(None)  # None表示生成器已结束
+
+                SCREEN_FILE_PATH = Path(request.file_url).with_name("PNGFILE") # 目录
+
+                IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp'}  # 要监控的图片格式
+                print("SCREEN_FILE_PATH: ", SCREEN_FILE_PATH)
+                # image_monitor_task = asyncio.create_task(
+                #     monitor_image_files(
+                #         SCREEN_FILE_PATH, 
+                #         IMAGE_EXTENSIONS,
+                #         task_terminate_event, 
+                #     )
+                # )
+                # 修改2：启动生成器消费任务，而不是直接启动monitor_image_files
+                image_monitor_task = asyncio.create_task(
+                    consume_image_generator(
+                        request,
+                        SCREEN_FILE_PATH,
+                        IMAGE_EXTENSIONS,
+                        task_terminate_event,
+                        image_event_queue
+                    )
+                )
+                print("图片监控任务已启动")
+                # 8. 异步监控日志文件，提取指定任务的日志并生成SSE格式响应
 
                 full_answer = ""
                 LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
+                print("LOG_FILE_PATH: ", LOG_FILE_PATH)
                 if not LOG_FILE_PATH.exists():
                     with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
                         f.write("")  # 创建空文件
@@ -181,13 +231,13 @@ async def optimize_stream_generator(
                     await log_file.seek(start_position) 
 
                     while not task_terminate_event.is_set():
-                        # 1. 检查任务状态
+                        # 8.1. 检查任务状态
                         try:
                             pass
                         except:
                             pass
 
-                        #2. 读取新增日志
+                        # 8.2. 读取新增日志
                         line = await log_file.readline()
                         if line:
                             if not line.endswith('\n'):
@@ -211,7 +261,7 @@ async def optimize_stream_generator(
                             # 无新内容时等待
                             await asyncio.sleep(0.05)
 
-                        full_answer += line + "\n\n"
+                        full_answer += line
 
 
 
@@ -221,44 +271,45 @@ async def optimize_stream_generator(
                 print("执行这个close了吗")
                 await algorithm_client.close()  # 关闭算法客户端连接
 
-                # 8. 采用新的图片流式方案并更新Redis
+                # 9. 采用新的图片流式方案并更新Redis
                 mock_images = [
-                    {"path": rf"{request.conversation_id}/{request.task_id}/convergence_curve.png", "alt": "收敛曲线"},
-                    {"path": rf"{request.conversation_id}/{request.task_id}/parameter_distribution.png", "alt": "参数分布图"}
+                    {"path": rf"/files/{request.conversation_id}/{request.task_id}/convergence_curve.png", "alt": "收敛曲线"},
+                    {"path": rf"/files/{request.conversation_id}/{request.task_id}/parameter_distribution.png", "alt": "参数分布图"}
                 ]
                 print("要展示的图片： ", mock_images)
                 image_parts_for_redis = []
                 for img_data in mock_images:
-                    if os.path.exists(img_data["path"]):
-                        image_file_name = os.path.basename(img_data["path"])
-                        image_url = f"/files/{image_file_name}" # 修正：指向 /files 路由
-                        
-                        image_part = {"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": img_data["alt"]}
-                        assistant_message.parts.append(image_part)
-                        assistant_message.timestamp = datetime.now()
+                    # if os.path.exists(img_data["path"]):
+                    image_file_name = os.path.basename(img_data["path"])
+                    image_url = img_data["path"] # 修正：指向 /files 路由
+                    
+                    image_part = {"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": img_data["alt"]}
+                    assistant_message.parts.append(image_part)
+                    assistant_message.timestamp = datetime.now()
 
-                        # 调试：打印实际的文件路径
-                        current_file_dir = os.path.dirname(os.path.abspath(__file__))
-                        project_root = os.path.dirname(current_file_dir)
-                        base_dir = os.path.join(project_root, "files")
-                        safe_path = os.path.abspath(os.path.join(base_dir, image_file_name))
-                        print(f"Attempting to serve image from: {safe_path}")
+                    # # 调试：打印实际的文件路径
+                    # current_file_dir = os.path.dirname(os.path.abspath(__file__))
+                    # project_root = os.path.dirname(current_file_dir)
+                    # base_dir = os.path.join(project_root, "files")
+                    # safe_path = os.path.abspath(os.path.join(base_dir, image_file_name))
+                    # print(f"Attempting to serve image from: {safe_path}")
 
-                        # 使用 SSEImageChunk 发送图片信息
-                        image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=image_file_name, altText=img_data["alt"])
-                        yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+                    # 使用 SSEImageChunk 发送图片信息
+                    print("设计优化图片：", image_url)
+                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=image_file_name, altText=img_data["alt"])
+                    yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
 
-                        await save_or_update_message_in_redis(
-                            user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                            conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                        )
+                    await save_or_update_message_in_redis(
+                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    )
 
-                        await asyncio.sleep(0.1) # 恢复延迟
+                    await asyncio.sleep(0.1) # 恢复延迟
                         
                         # 准备存入Redis的数据
                         #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": img_data["alt"]})
 
-                # 9. 发送结束消息
+                # 10. 发送结束消息
                 final_metadata = GenerationMetadata(
                     cad_file=model_path,
                     code_file="script.py",
@@ -272,7 +323,7 @@ async def optimize_stream_generator(
                 sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
                 yield sse_final
 
-                 # 10. 最后一次更新Redis，状态为 "done"
+                 # 11. 最后一次更新Redis，状态为 "done"
                 assistant_message.status = "done"
                 assistant_message.timestamp = datetime.now()
                 await save_or_update_message_in_redis(
@@ -280,7 +331,7 @@ async def optimize_stream_generator(
                     conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
                 )
 
-                # 11. 数据库操作，保存任务状态，优化结果
+                # 12. 数据库操作，保存任务状态，优化结果
                 task.status = "done"
                 await task.save()
 
@@ -668,6 +719,7 @@ class ControlFileMonitor:
                     # await self._cleanup_resources()
 
                     self.running = False
+                    print("准备推出循环")
                     break
 
                 # 每秒检查一次
@@ -677,6 +729,7 @@ class ControlFileMonitor:
             if completion_callback:
                 await completion_callback(False, f"监听错误: {str(e)}")
             await self._cleanup_resources()
+        print("推出try了吗")
 
     async def _cleanup_resources(self):
          
@@ -706,12 +759,14 @@ class ControlFileMonitor:
         self.monitor_task = None
 
 # 工厂函数
-def create_task_monitor_callback(model_path: str, client):
+def create_task_monitor_callback(model_path: str, client, task_terminate_event):
     """创建任务启动后的回调函数，用于开始监听控制文件"""
     if not isinstance(model_path, str) or not model_path.strip():
         raise ValueError("初始化时的model_path必须是有效的非空字符串")
     if not client:
         raise ValueError("client参数不能为空")
+    if not task_terminate_event:
+        raise ValueError("task_terminate_event参数不能为空")
     async def task_start_callback(data: Optional[Dict] = None):
         if data and isinstance(data, dict):
             callback_model_path = data.get("model_path", model_path)
@@ -726,11 +781,121 @@ def create_task_monitor_callback(model_path: str, client):
             async def on_completion(success: bool, message: str):
                 print(f"任务处理完成: {message}")
                 # 可以在这里添加后续处理逻辑，如通知用户等
-            
+                # 当控制文件监听完成时，触发终止事件以结束日志监控
+                if not task_terminate_event.is_set():
+                    await asyncio.sleep(1)
+                    task_terminate_event.set()
+                    print("控制文件监听结束，已触发日志监控终止事件")
+                return
             # 启动监听
             await monitor.start_monitoring(on_completion)
             print("回调函数里，监听结束了吗")
             return 
         except Exception as e:
             print(f"任务监控启动失败: {str(e)}")
+            # 发生异常时也触发终止事件
+            if not task_terminate_event.is_set():
+                task_terminate_event.set()
     return task_start_callback
+
+async def get_existing_images(SCREEN_FILE_PATH, IMAGE_EXTENSIONS) -> Set[str]:
+    """获取当前目录下所有符合条件的图片文件路径"""
+    images = set()
+    if not SCREEN_FILE_PATH.exists():
+        return images
+        
+    # 使用os.scandir替代iterdir，减少系统调用
+    with os.scandir(SCREEN_FILE_PATH) as entries:
+        for entry in entries:
+            # 只检查文件，且扩展名符合要求
+            if entry.is_file(follow_symlinks=False):
+                _, ext = os.path.splitext(entry.name)
+                if ext.lower() in IMAGE_EXTENSIONS:
+                    images.add(entry.path)
+    return images
+
+async def process_new_image(image_path):
+    """处理新发现的图片并推送至前端"""
+    try:
+        # 获取图片文件名作为标识
+        image_file_name = os.path.basename(image_path)
+        print(f"传递 图片{image_file_name}")
+       
+        # 构建图片信息
+        alt_Text = "screenshot"
+        # # 更新消息内容
+        # assistant_message.content += f"新图片: {image_filename}\n"
+        # assistant_message.timestamp = datetime.now()
+        
+
+        # # 保存消息到Redis
+        # await save_or_update_message_in_redis(
+        #     user_id=current_user.user_id,
+        #     task_id=request.task_id,
+        #     task_type=request.task_type,
+        #     conversation_id=request.conversation_id,
+        #     message=assistant_message,
+        #     redis_client=redis_client
+        # )
+        
+        # 使用 SSEImageChunk 发送图片信息
+        image_chunk_data = SSEImageChunk(imageUrl=image_path, fileName=image_file_name, altText=alt_Text)
+        yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+        
+    except Exception as e:
+        print(f"处理图片 {image_path} 时出错: {str(e)}")
+
+
+async def monitor_image_files(
+        request,
+        SCREEN_FILE_PATH: Path, 
+        IMAGE_EXTENSIONS,
+        task_terminate_event, 
+):
+    """监控图片文件目录，当新图片出现时推送至前端"""
+    # if not SCREEN_FILE_PATH.exists() or not SCREEN_FILE_PATH.is_dir():
+    #     print(f"图片监控目录不存在或不是目录: {SCREEN_FILE_PATH}")
+    #     return
+    
+    # 记录初始已存在的图片文件，避免监控开始时推送历史图片
+    initial_images = await get_existing_images(SCREEN_FILE_PATH, IMAGE_EXTENSIONS)
+    print(f"开始监控图片目录: {SCREEN_FILE_PATH}, 初始图片数量: {len(initial_images)}")
+    
+    # 用于跟踪已处理过的图片，避免重复推送
+    processed_images = set(initial_images)
+    # 延长检查间隔，减少文件系统访问
+    check_interval = 2  # 2秒检查一次，比原来更长
+    last_check_time = datetime.now()
+    
+    try:
+        while not task_terminate_event.is_set():
+             # 只有到达检查时间才执行目录扫描
+            if (datetime.now() - last_check_time).total_seconds() >= check_interval:
+                # 获取当前目录下的所有图片
+                current_images = await  get_existing_images(SCREEN_FILE_PATH, IMAGE_EXTENSIONS)
+                print("current_images: ", current_images)
+                
+                # 找出新增的图片
+                new_images = [img for img in current_images if img not in processed_images]
+                
+                for image_path in new_images:
+                    # 处理新图片
+                    image_file_name = os.path.basename(image_path)
+                    print(f"传递 图片{image_file_name}")
+                    # 构建图片信息
+                    image_url =rf"/files/{request.conversation_id}/{request.task_id}/PNGFILE/{image_file_name}"
+                    print(f"传递 图片{image_url}")
+                    alt_Text = "screenshot"
+                    image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=image_file_name, altText=alt_Text)
+                    yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
+                    
+                    # 将新图片加入已处理集合
+                    processed_images.add(image_path)
+                last_check_time = datetime.now()
+            # 控制监控频率
+            await asyncio.sleep(1)  # 每1秒检查一次新图片
+            
+    except Exception as e:
+        print(f"图片监控过程出错: {str(e)}")
+    finally:
+        print("图片监控任务已终止")

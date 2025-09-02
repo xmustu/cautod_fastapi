@@ -208,6 +208,7 @@ async def geometry_stream_generator(
             assistant_message.timestamp = datetime.now()
 
             image_chunk_data = SSEImageChunk(imageUrl=image_url, fileName=image_file_name, altText="几何建模预览图")
+            print("几何建模预览图: ",image_url)
             yield f'event: image_chunk\ndata: {image_chunk_data.model_dump_json()}\n\n'
 
             await save_or_update_message_in_redis(
