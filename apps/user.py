@@ -7,13 +7,14 @@ from fastapi import Depends
 from fastapi.exceptions import HTTPException
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+import httpx
+
 from database.models import *
 from core.hashing import Hasher
 from core.authentication import create_token
 from core.authentication import  User
 from core.authentication import get_current_active_user
-import httpx
-from config import Settings
+from config import settings
 
 from apps.schemas import AuthConfig
 
@@ -22,7 +23,7 @@ user = APIRouter()
 
 templates = Jinja2Templates(directory="templates")
 
-settings = Settings()
+
 
 
 

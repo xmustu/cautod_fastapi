@@ -1,28 +1,26 @@
 from typing import Optional, Dict, List, AsyncGenerator, Union, List, Literal,Any
+from datetime import datetime
+import json 
+import http.client
+import httpx
+import os
 
+import aiohttp
+from pathlib import Path
 from fastapi import APIRouter
 from fastapi import HTTPException
-
-
-from pydantic import BaseModel
-from pydantic import Field
-from pydantic import field_validator
 from fastapi import Depends
 import uuid
-from datetime import datetime
+import asyncio
 from database.models import Conversations
 from core.authentication import get_current_active_user
 from core.authentication import User
 from database.models import Tasks
+from apps.chat import save_or_update_message_in_redis
+from database.models import Tasks, Conversations, GeometryResults
 
-import json 
-import http.client
-import json
-import httpx
-import os
-import aiohttp
-from pathlib import Path
-from config import Settings
+
+from config import settings
 
 from apps.schemas import FileItem
 from apps.schemas import Message
@@ -58,14 +56,11 @@ from apps.schemas import (
     SSEImageChunk
 )
 
-settings = Settings()
+
 
 geometry = APIRouter()
 
 
-from apps.chat import save_or_update_message_in_redis
-import asyncio
-from database.models import Tasks, Conversations, GeometryResults
 
 async def geometry_stream_generator(
         request: TaskExecuteRequest,
@@ -192,7 +187,7 @@ async def geometry_stream_generator(
         if geometry_result:
             final_metadata = GenerationMetadata(
                     cad_file="model.step",
-                    #stl_file="model.stl",
+                    stl_file="model.stl",
                     code_file="script.py",
 
                     preview_image="Oblique_View.png"
@@ -226,6 +221,7 @@ async def geometry_stream_generator(
             final_metadata = GenerationMetadata(
                 cad_file=None,
                 code_file=None,
+                stl_file=None,
                 preview_image=None
             )
 

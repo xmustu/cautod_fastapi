@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
+
 
 class FileItem(BaseModel):
     """通用文件模型"""

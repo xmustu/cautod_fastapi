@@ -1,30 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
-from fastapi.responses import StreamingResponse
-import asyncio
 import json
 from datetime import datetime
+import os
+import time 
+
+
+import uuid
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
 from tortoise.transactions import in_transaction
+
 from core.authentication import get_current_active_user, User
 from database.models import Tasks, Conversations, GeometryResults, OptimizationResults
-
-import os
 from apps.chat import save_message_to_redis, save_or_update_message_in_redis
 from apps.geometry import  DifyClient
 from apps.geometry import geometry_stream_generator
 from apps.retrieval import retrieval_stream_generator
 from apps.optimize import optimize_stream_generator
 from apps.optimize import AlgorithmClient, create_task_monitor_callback, write_key
-import time 
-import uuid
-import asyncio
-import aiofiles
 
-from pathlib import Path
-import shutil
 
-from config import Settings
+from config import settings
 from apps.schemas import (
     TaskCreateRequest,
     TaskCreateResponse,
@@ -48,7 +46,7 @@ from apps.schemas import (
     SSEImageChunk
 )
 from apps.schemas import MessageRequest
-settings = Settings()
+
 
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
@@ -167,25 +165,25 @@ async def execute_task(
         """
         print(f"--- Received request to execute task: {request.task_id} ({request.task_type}) ---")
         # 数据库事务
-        async with in_transaction() as conn:
-            # 验证任务是否存在且属于当前用户
-            task = await Tasks.get_or_none(
+        task = await Tasks.get_or_none(
                 task_id=request.task_id, 
                 user_id=current_user.user_id
             )
+        async with in_transaction() as conn:
+            # 验证任务是否存在且属于当前用户
             if not task or task.conversation_id != request.conversation_id:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Task not found or does not belong to the current user/conversation."
                 )
 
-            # print("通过验证了吗")
+            print("通过验证了吗")
             # if task.status != "pending":
             #     raise HTTPException(
             #         status_code=status.HTTP_400_BAD_REQUEST,
             #         detail=f"Task {task.task_id} is not in a valid state to start execution. Current state: {task.status}"
             #     )
-            print("通过status验证了吗")
+            # print("通过status验证了吗")
             # 检查是否已经有一个 "optimize" 类型的任务在运行
             if request.task_type == "optimize":
                 running_optimize_task = await Tasks.filter(
@@ -193,8 +191,10 @@ async def execute_task(
                     task_type="optimize",
                     status="running"
                 ).first()
+                print(running_optimize_task)
                 
                 if running_optimize_task:
+                    print(f"{running_optimize_task.task_id} 任务是运行状态")
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Task {running_optimize_task.task_id} is already running. Only one 'optimize' task can run at a time."

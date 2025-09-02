@@ -18,7 +18,7 @@ async def redis_connect():
     try:
         redis_client = redis.Redis(connection_pool=redis_pool)
         sig = await redis_client.ping()  # 测试连接
-        print(sig)
+        print(sig,", Redis connected.")
         return redis_client
     except ConnectionError:
         print("Redis connection error")

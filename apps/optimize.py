@@ -1,4 +1,7 @@
 from typing import Optional, Dict, List, Any, Union, Callable
+import json
+import os
+from datetime import datetime
 
 from fastapi import APIRouter
 from fastapi import Header
@@ -7,7 +10,7 @@ from pydantic import Field
 from fastapi import Form
 from pydantic import  field_validator
 
-from core.authentication import authenticate
+
 
 import httpx
 from fastapi import status, HTTPException
@@ -15,12 +18,12 @@ from contextlib import asynccontextmanager
 import websockets
 
 import asyncio
-import json
-import os
+
 import aiofiles
 from pathlib import Path
-from config import Settings
-from datetime import datetime
+
+from config import settings
+from core.authentication import authenticate
 from core.authentication import User
 from database.models import Tasks
 from database.models import OptimizationResults
@@ -45,7 +48,7 @@ from apps.schemas import (
     SSEImageChunk
 )
 
-settings = Settings()
+
 
 optimize = APIRouter()
 

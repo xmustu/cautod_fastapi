@@ -1,9 +1,12 @@
 import json
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from tortoise.contrib.fastapi import register_tortoise
 import uvicorn
-import os
 
 from apps.router import router
 from apps.user import user
@@ -12,12 +15,11 @@ from apps.optimize import optimize
 from apps.tasks import router as tasks_router
 from apps.chat import router as chat_router
 from core.middleware import count_time_middleware,FullRequestLoggerMiddleware
-from tortoise.contrib.fastapi import register_tortoise
-from settings import TORTOISE_ORM_sqlite, TORTOISE_ORM_mysql
-from contextlib import asynccontextmanager
+
+from database.settings import TORTOISE_ORM_SQLITE, TORTOISE_ORM_MYSQL
+from database.sql import register_sql
 from database.redis import redis_connect
 from core.geometry import start_mcp, dify_api_port_forward
-import os
 from api.mcp_server import mcp_cadquery
 
 @asynccontextmanager
@@ -34,8 +36,11 @@ async def lifespan(app: FastAPI):
     #mcp_process = await start_mcp()
     #print("执行过了吗")
     dify_api_process = await dify_api_port_forward()
+
     #其他
-    yield  
+    yield
+    # async with register_sql(app):
+    #     yield print("lifespan 启动数据库")
     # 终止时执行的事件
 
     #关闭日志服务
@@ -113,7 +118,7 @@ app.add_middleware(
 # app.add_middleware(FullRequestLoggerMiddleware)
 register_tortoise(
     app,
-    config=TORTOISE_ORM_sqlite,  # 使用 MySQL 配置
+    config=TORTOISE_ORM_SQLITE,  # 使用 MySQL 配置
     generate_schemas=True,  # 在应用启动时自动创建数据库表
     add_exception_handlers=True,
 )

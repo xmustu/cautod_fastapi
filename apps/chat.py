@@ -1,27 +1,28 @@
+from datetime import datetime
+from time import time
+from typing import Optional, Dict, Any, List
+import asyncio
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import Request
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
 from fastapi.responses import StreamingResponse
-import asyncio
-import json
+
 
 import redis.asyncio as aioredis
 from core.authentication import get_current_active_user, User
 from database.models import Tasks
-
 from apps.schemas import SSETextChunk, SSEResponse
 from apps.schemas import Message
+from config import settings
 
-from config import Settings
-from datetime import datetime
-from time import time
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
     tags=["对话管理"]
 )
 
-settings = Settings()
+
 
 
 def get_message_key(user_id: str, task_id: str) -> str:

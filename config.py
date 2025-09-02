@@ -1,6 +1,23 @@
 from pydantic_settings import BaseSettings,SettingsConfigDict
 
+
 class Settings(BaseSettings):
+    DEBUG_MODE: bool =False
+
+    SQLMODE: str
+
+    STATIC_DIR:str ="files" 
+    STATIC_URL:str ="/files"
+    STATIC_NAME:str ="files"
+
+    MYSQL_HOST:str = "240e:3bc:266:b4d0:8ed2:275a:f1a9:7b4d"
+    MYSQL_PORT:str = '3306'
+    MYSQL_USER:str = 'lwx'
+    MYSQL_PASSWORD:str = "i4AIi4AI"
+    MYSQL_DATABASE:str = "cautod"
+
+    TEMPLATES_DIR:str ="/templates"
+
     GITHUB_CLIENT_ID: str
     GITHUB_CLIENT_SECRET: str
     GITHUB_REDIRECT_URL: str
@@ -23,7 +40,15 @@ class Settings(BaseSettings):
     OPTIMIZE_API_URL: str
     DIFY_API_BASE_URL: str
     DIFY_API_KEY: str
+    
     model_config = SettingsConfigDict(env_file=".env")
+
+    # class Settings:
+    #     env_file = ".env"
+
+
+
+settings = Settings()
 
 
 
