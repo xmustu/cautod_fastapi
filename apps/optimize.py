@@ -172,18 +172,19 @@ async def optimize_stream_generator(
         
                 # 7.  异步监控软件截图文件
                 # 创建一个队列用于传递异步生成器产生的SSE chunks
-                image_event_queue = asyncio.Queue()
+                queue = asyncio.Queue()
                 # 修改1：创建一个包装函数，消费异步生成器并将结果放入队列
-                async def consume_image_generator(request, screen_path, extensions, terminate_event, queue):
+                async def consume_image_generator(request, screen_path, extensions, task_terminate_event, queue):
                     """消费图片监控生成器，将结果放入队列"""
                     try:
                         # 异步迭代生成器产生的所有值
-                        async for sse_chunk in monitor_image_files(request, screen_path, extensions, terminate_event):
+                        async for sse_chunk in monitor_image_files(request, screen_path, extensions, task_terminate_event):
                             # 将生成的chunk放入队列
+                            print("截图sse_chunk: ", sse_chunk)
                             await queue.put(sse_chunk)
                             
                             # 检查是否需要终止
-                            if terminate_event.is_set():
+                            if task_terminate_event.is_set():
                                 break
                     except Exception as e:
                         print(f"图片生成器消费出错: {str(e)}")
@@ -211,57 +212,75 @@ async def optimize_stream_generator(
                         SCREEN_FILE_PATH,
                         IMAGE_EXTENSIONS,
                         task_terminate_event,
-                        image_event_queue
+                        queue
                     )
                 )
                 print("图片监控任务已启动")
+
                 # 8. 异步监控日志文件，提取指定任务的日志并生成SSE格式响应
-
-                full_answer = ""
+                # 创建一个包装函数，消费异步生成器并将结果放入队列
+                async def consume_log_generator(
+                        request,
+                        LOG_FILE_PATH,
+                        state,
+                        task_terminate_event,
+                        assistant_message,
+                        current_user,
+                        redis_client,
+                        queue):
+                    """消费日志监控生成器，将结果放入队列"""
+                    try:
+                        # 异步迭代生成器产生的所有值
+                        async for sse_chunk in monitor_log_files(
+                            request,
+                            LOG_FILE_PATH,
+                            state,
+                            task_terminate_event,
+                            assistant_message,
+                            current_user,
+                            redis_client
+                        ):
+                            # 将生成的chunk放入队列
+                            print("日志sse_chunk: ", sse_chunk)
+                            await queue.put(sse_chunk)
+                            
+                            # 检查是否需要终止
+                            if task_terminate_event.is_set():
+                                break
+                    except Exception as e:
+                        print(f"图片生成器消费出错: {str(e)}")
+                        # 可以放入错误信息到队列
+                        await queue.put(f"event: error\ndata: {str(e)}\n\n")
+                    finally:
+                        # 放入终止信号
+                        await queue.put(None)  # None表示生成器已结束
+                
+                state = {"full_answer": ""}  # 使用可变对象来共享状态
                 LOG_FILE_PATH = Path(request.file_url).with_name("backend_log.txt")
-                print("LOG_FILE_PATH: ", LOG_FILE_PATH)
-                if not LOG_FILE_PATH.exists():
-                    with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
-                        f.write("")  # 创建空文件
+                log_monitor_task = asyncio.create_task(
+                    consume_log_generator(
+                        request,
+                        LOG_FILE_PATH,
+                        state,
+                        task_terminate_event,
+                        assistant_message,
+                        current_user,
+                        redis_client,
+                        queue
+                    )
+                )
 
-                # 记录初始文件位置
-                start_position = LOG_FILE_PATH.stat().st_size
-                async with aiofiles.open(LOG_FILE_PATH, "r",encoding="utf-8") as log_file:
+                # 当 terminate_event 生效或任务结束后结束 SSE
+                while not task_terminate_event.is_set():
+                    chunk = await queue.get()
+                    if chunk:
+                        yield chunk
 
-                    await log_file.seek(start_position) 
+                # 取消后台任务
+                image_monitor_task.cancel()
+                log_monitor_task.cancel()
 
-                    while not task_terminate_event.is_set():
-                        # 8.1. 检查任务状态
-                        try:
-                            pass
-                        except:
-                            pass
-
-                        # 8.2. 读取新增日志
-                        line = await log_file.readline()
-                        if line:
-                            if not line.endswith('\n'):
-                                line += '\n'
-                            chunk = line #.replace("\\n", "\n")
-
-                            assistant_message.content += chunk
-                            assistant_message.timestamp = datetime.now()
-
-                            text_chunk_data = SSETextChunk(text=chunk)
-                            sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-
-                            await save_or_update_message_in_redis(
-                                user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                                conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                            )
-                        
-                            yield sse_chunk
-                            await asyncio.sleep(0.05)  # 控制发送速度
-                        else:
-                            # 无新内容时等待
-                            await asyncio.sleep(0.05)
-
-                        full_answer += line
+                print("full_answer: ", state)
 
 
 
@@ -316,7 +335,7 @@ async def optimize_stream_generator(
                     preview_image=None
                 )
                 final_response_data = SSEResponse(
-                    answer="".join(full_answer),
+                    answer="".join(state["full_answer"]),
                     metadata=final_metadata
                 )
                 
@@ -688,9 +707,9 @@ class ControlFileMonitor:
         try:
             while self.running:
                 # 读取命令值
-                print(f"control.txt url: {self.control_file}")
+                #print(f"control.txt url: {self.control_file}")
                 command_str = read_key(self.control_file, "command")
-                print(f"监听control.txt, command={command_str}")
+                #print(f"监听control.txt, command={command_str}")
                 if not command_str:
                         await asyncio.sleep(1)  # 1秒后重试
                         continue
@@ -899,3 +918,57 @@ async def monitor_image_files(
         print(f"图片监控过程出错: {str(e)}")
     finally:
         print("图片监控任务已终止")
+
+
+async def monitor_log_files(
+        request,
+        LOG_FILE_PATH,
+        state,
+        task_terminate_event,
+        assistant_message,
+        current_user,
+        redis_client
+):
+    
+    if not LOG_FILE_PATH.exists():
+        with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
+            f.write("")  # 创建空文件
+
+    # 记录初始文件位置
+    start_position = LOG_FILE_PATH.stat().st_size
+    async with aiofiles.open(LOG_FILE_PATH, "r",encoding="utf-8") as log_file:
+
+        await log_file.seek(start_position) 
+
+        while not task_terminate_event.is_set():
+            # 1. 检查任务状态
+            try:
+                pass
+            except:
+                pass
+
+            #2. 读取新增日志
+            line = await log_file.readline()
+            if line:
+                if not line.endswith('\n'):
+                    line += '\n'
+                chunk = line #.replace("\\n", "\n")
+
+                assistant_message.content += chunk
+                assistant_message.timestamp = datetime.now()
+
+                text_chunk_data = SSETextChunk(text=chunk)
+                sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+            
+                yield sse_chunk
+                await asyncio.sleep(0.05)  # 控制发送速度
+            else:
+                # 无新内容时等待
+                await asyncio.sleep(0.05)
+
+            state["full_answer"] += line 
