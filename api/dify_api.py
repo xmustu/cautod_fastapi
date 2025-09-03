@@ -4,7 +4,7 @@ source code from He Sicheng
 
 import socket
 import threading
-
+from config import settings
 def forward(source, destination):
     while True:
         try:
@@ -50,10 +50,10 @@ def start_forwarder(listen_host, listen_port, target_host, target_port=80):  # �
 
 if __name__ == "__main__":
     # 配置（目标端口未显式设置，使用默认80）
-    LISTEN_HOST = "0.0.0.0"
-    LISTEN_PORT = 8000       # 局域网访问端口
-    TARGET_HOST = "localhost"# 本地服务地址
-    TARGET_PORT = 80       # 被注释，使用函数默认值
+    LISTEN_HOST = settings.DIFY_LISTEN_HOST
+    LISTEN_PORT = settings.DIFY_LISTEN_PORT  # 局域网访问端口
+    TARGET_HOST = settings.DIFY_TARGET_HOST      # 本地服务地址
+    TARGET_PORT = settings.DIFY_TARGET_PORT     # 被注释，使用函数默认值
     
     start_forwarder(LISTEN_HOST, LISTEN_PORT, TARGET_HOST, TARGET_PORT)
     

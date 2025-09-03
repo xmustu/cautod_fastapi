@@ -40,7 +40,10 @@ class Settings(BaseSettings):
     OPTIMIZE_API_URL: str
     DIFY_API_BASE_URL: str
     DIFY_API_KEY: str
-    
+    DIFY_LISTEN_HOST: str
+    DIFY_LISTEN_PORT: int
+    DIFY_TARGET_HOST: str
+    DIFY_TARGET_PORT: int
     model_config = SettingsConfigDict(env_file=".env")
 
     # class Settings:

@@ -21,3 +21,4 @@ aiofiles
 aiohttp
 websockets
 fastmcp
+watchfiles
