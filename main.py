@@ -1,6 +1,7 @@
 import json
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -27,7 +28,11 @@ async def lifespan(app: FastAPI):
     # 启动时执行的事件
 
     #启动日志服务
+    log_dir = Path("./logs")
+    log_dir.mkdir(parents=True, exist_ok=True)  # 创建目录（若不存在）
 
+    for name in ("app.log", "access.log"):
+        (log_dir / name).touch(exist_ok=True)   # 创建空文件（若不存在）
     #连接数据库
     app.state.redis = await redis_connect()  # 连接到 Redis 数据库
     #获取动态配置
