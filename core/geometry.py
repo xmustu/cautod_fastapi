@@ -33,12 +33,21 @@ async def start_mcp():
 async def dify_api_port_forward():
     """启动 Dify API 端口转发"""
     try:
-        # 配置（目标端口未显式设置，使用默认80）
-        LISTEN_HOST = settings.DIFY_LISTEN_HOST
-        LISTEN_PORT = settings.DIFY_LISTEN_PORT  # 局域网访问端口
-        TARGET_HOST = settings.DIFY_TARGET_HOST      # 本地服务地址
-        TARGET_PORT = settings.DIFY_TARGET_PORT     # 被注释，使用函数默认值
-        await start_forwarder(LISTEN_HOST, LISTEN_PORT, TARGET_HOST, TARGET_PORT)
+        # 获取当前文件所在目录
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # 构建dify_api.py的绝对路径
+        dify_api_path = os.path.join(current_dir, "api", "dify_api.py")
+
+        # 启动端口转发服务
+        # 直接使用当前环境的Python解释器
+        process = subprocess.Popen(
+            [sys.executable, dify_api_path],  
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        print(f"Dify API 端口转发服务已启动，执行文件：{dify_api_path}")
+        return process
     except Exception as e:
         print(f"启动 Dify API 端口转发服务失败: {e}")
         return None
