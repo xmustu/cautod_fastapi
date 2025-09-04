@@ -5,11 +5,11 @@ FROM python:3.10-slim as builder
 # 设置工作目录
 WORKDIR /app
 
-# # 安装构建依赖
-# RUN apt-get update && apt-get install -y \
-#     gcc \
-#     g++ \
-#     && rm -rf /var/lib/apt/lists/*
+# 安装构建依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # 复制requirements文件
 COPY requirements.txt .
@@ -23,22 +23,22 @@ FROM python:3.10-slim
 # 设置工作目录
 WORKDIR /app
 
-# # 设置环境变量
-# ENV PYTHONDONTWRITEBYTECODE=1 \
-#     PYTHONUNBUFFERED=1 \
-#     PYTHONPATH=/app \
-#     ENVIRONMENT=production
+# 设置环境变量
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    ENVIRONMENT=production
 
-# # 安装运行时系统依赖
-# RUN apt-get update && apt-get install -y \
-#     curl \
-#     && rm -rf /var/lib/apt/lists/*
+# 安装运行时系统依赖
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# # 从构建阶段复制已安装的Python包
-# COPY --from=builder /root/.local /root/.local
+# 从构建阶段复制已安装的Python包
+COPY --from=builder /root/.local /root/.local
 
-# # 确保脚本可以找到已安装的包
-# ENV PATH=/root/.local/bin:$PATH
+# 确保脚本可以找到已安装的包
+ENV PATH=/root/.local/bin:$PATH
 
 # 复制项目文件
 COPY . .
