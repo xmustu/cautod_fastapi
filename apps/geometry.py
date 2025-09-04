@@ -197,10 +197,9 @@ async def geometry_stream_generator(
             image_file_name = "Oblique_View.png"
 
             # 定义路径片段
-            parts = ["/files", str(request.conversation_id), str(task.task_id), image_file_name]
-
+            base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
             # 用 "/" 拼接路径
-            image_url = "/".join(parts)
+            image_url = rf"{base_dir}/{request.conversation_id}/{request.task_id}/{image_file_name}"
             #image_url = os.path.join("/files", str(request.conversation_id), str(task.task_id), imgage_file_name)
             print("image_url: ", image_url)
             image_part = {"type": "image", "imageUrl": image_url, "fileName": image_file_name, "altText": "几何建模预览图"}
@@ -493,10 +492,12 @@ async def create_conversation(
     )
 
     # 获取当前目录的上一级目录
-    parent_dir = Path(os.getcwd())
-    
+    if settings.DIRECTORY:
+        base_dir = Path(settings.DIRECTORY) 
+    else:
+        base_dir = Path(os.getcwd()) / "files"
     # 构建目标目录路径：上一级目录/files/会话ID
-    conversation_dir = parent_dir / "files" / conversation_id
+    conversation_dir = base_dir / conversation_id
     
     try:
         # 创建目录（包括所有必要的父目录）

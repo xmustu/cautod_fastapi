@@ -4,12 +4,12 @@ from pydantic_settings import BaseSettings,SettingsConfigDict
 class Settings(BaseSettings):
     DEBUG_MODE: bool =False
 
+    
+    DIRECTORY: str
+    STATIC_DIR:str 
+    STATIC_URL:str 
+    STATIC_NAME:str 
     SQLMODE: str
-
-    STATIC_DIR:str ="files" 
-    STATIC_URL:str ="/files"
-    STATIC_NAME:str ="files"
-
     MYSQL_HOST:str = "240e:3bc:266:b4d0:8ed2:275a:f1a9:7b4d"
     MYSQL_PORT:str = '3306'
     MYSQL_USER:str = 'lwx'

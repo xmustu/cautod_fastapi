@@ -22,7 +22,7 @@ from database.sql import register_sql
 from database.redis import redis_connect
 from core.geometry import start_mcp, dify_api_port_forward
 from api.mcp_server import mcp_cadquery
-
+from config import settings
 log_dir = Path("./logs")
 log_dir.mkdir(parents=True, exist_ok=True)  # 创建目录（若不存在）
 
@@ -76,7 +76,11 @@ exclude_patterns = [
     "files/*",          # 排除files根目录下的所有文件
     "files/**/*",       # 排除files所有子目录及文件（递归）
     "files\\*",         # Windows路径分隔符兼容（可选，确保覆盖）
-    "files\\**\\*"      # Windows递归匹配（可选）
+    "files\\**\\*",    # Windows递归匹配（可选）
+    "shared/*",          # 排除files根目录下的所有文件
+    "shared/**/*",       # 排除files所有子目录及文件（递归）
+    "shared\\*",         # Windows路径分隔符兼容（可选，确保覆盖）
+    "shared\\**\\*"
 ]
 
 
@@ -103,7 +107,7 @@ app.mount("/analytics",mcp_app)
 # --- 新增：挂载静态文件目录 ---
 # 创建 files 目录（如果不存在）
 os.makedirs("files", exist_ok=True)
-app.mount("/files", StaticFiles(directory="files"), name="files")
+app.mount(settings.STATIC_URL, StaticFiles(directory=settings.STATIC_DIR), name=settings.STATIC_NAME)
 
 # CORS 中间件配置
 origins = [
@@ -111,6 +115,14 @@ origins = [
     "http://127.0.0.1:5173", # 有时浏览器会使用 127.0.0.1
     "http://localhost/",
     # 在生产环境中，应替换为你的前端域名
+    "http://frontend",
+
+    # 添加 Dify 相关的来源
+    "http://docker-web-1",        # Dify 前端容器
+    "http://docker-api-1",        # Dify API 容器
+    "http://docker-nginx-1",      # Dify nginx 容器（如果通过 nginx 转发）
+    "http://docker-web-1:3000",   # 若 Dify 前端有端口，需包含端口
+    "http://docker-api-1:5001"    # 若 Dify API 有端口，需包含端口
 ]
 app.add_middleware(
     CORSMiddleware,

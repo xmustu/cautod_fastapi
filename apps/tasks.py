@@ -127,11 +127,11 @@ async def create_task(
         # 'details' 字段在 Tasks 模型中不存在，因此不直接保存
     )
     # 创建任务的文件存放目录
-    # 获取当前目录的上一级目录
-    parent_dir = Path(os.getcwd())
+    # 使用配置中的基础目录作为根路径，若未设置则默认使用"files"目录
+    base_dir = Path(settings.DIRECTORY) if settings.DIRECTORY else Path("files")
     
     # 构建目标目录路径：上一级目录/files/会话ID
-    task_dir = parent_dir / "files" / str(task_data.conversation_id) / str(new_task.task_id)
+    task_dir = base_dir / str(task_data.conversation_id) / str(new_task.task_id)
     
     try:
         # 创建目录（包括所有必要的父目录）

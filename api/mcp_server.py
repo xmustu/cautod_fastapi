@@ -4,7 +4,7 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-
+import asyncio
 from fastmcp import FastMCP
 from fastapi import Request
 from fastapi import FastAPI
@@ -12,24 +12,38 @@ import time
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
 from database.models import OptimizationResults, Tasks, GeometryResults
+from config import settings
 
-
-async def obtain_work_dir(dify_conversation_id: str) -> Path:
+async def obtain_work_dir(dify_conversation_id: str,
+                          max_attempts: int = 10, 
+                          interval_seconds: int = 1
+) -> Path:
     """获取与会话ID对应的任务的工作目录"""
 
     # 提取会话ID和任务ID
-    try:
-        task = await Tasks.get_or_none(dify_conversation_id=dify_conversation_id)
-        task_id, conversation_id = task.task_id, task.conversation_id
-        parent_dir = Path(os.getcwd())
-        # 构建目标目录路径：上一级目录/files/会话ID
-        task_dir = parent_dir / "files" / str(conversation_id) / str(task_id)
-        print("任务目录: ", task_dir)
-        relative_task_dir = task_dir.relative_to(Path(os.getcwd()))
-        print("相对任务目录: ", relative_task_dir)
-        return relative_task_dir
-    except Exception as e:
-        raise RuntimeError(f"无法获取Dify会话ID对应的任务信息: {str(e)}")
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            task = await Tasks.get_or_none(dify_conversation_id=dify_conversation_id)
+            if task:
+                print("task: ",task)
+                task_id, conversation_id = task.task_id, task.conversation_id
+                base_dir = Path(settings.DIRECTORY) if settings.DIRECTORY else Path("files")
+                # 构建目标目录路径：上一级目录/files/会话ID
+                task_dir = base_dir / str(conversation_id) / str(task_id)
+                print("任务目录: ", task_dir)
+                relative_task_dir = task_dir.relative_to(Path(os.getcwd()))
+                print("相对任务目录: ", relative_task_dir)
+                return relative_task_dir
+            # 未找到任务，等待下一次尝试
+            print(f"第{attempt + 1}次尝试未找到任务，等待{interval_seconds}秒...")
+            attempt += 1
+            await asyncio.sleep(interval_seconds)
+        except Exception as e:
+            print(f"查询任务时发生错误: {str(e)}")
+            attempt += 1
+            await asyncio.sleep(interval_seconds)
+    raise RuntimeError(f"无法获取Dify会话ID对应的任务信息: {str(e)}")
 
 async def save_geometry_result(dify_conversation_id: str, work_dir: Path):
     """将最新的几何建模结果保存到数据库"""

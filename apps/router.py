@@ -22,7 +22,7 @@ from database.models import *
 
 from apps.chat import get_message_key, get_user_task_key
 
-
+from config import settings
 from apps.schemas import FileRequest
 from apps.schemas import ConversationOut
 
@@ -42,8 +42,13 @@ ALLOWED_BASE_DIRS = [
 ]
 
 async def save_file(file, path: Optional[str] = None, conversation_id: int = None, task_id: int = None):
+    base_dir = settings.DIRECTORY
     if path == None:
-        path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "files", str(conversation_id), str(task_id)))
+        if base_dir:
+            # 使用环境变量定义的目录作为基础
+            path = os.path.join(base_dir, str(conversation_id), str(task_id))
+        else:
+            path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "files", str(conversation_id), str(task_id)))
         os.makedirs(path, exist_ok=True)
     print("path: ", path)
     res = await file.read()
@@ -83,8 +88,9 @@ async def get_model(request: FileRequest,
     try:
         # 构建文件路径
         #file_path = Path("files") / str(request.conversation_id) / str(request.task_id) / request.file_name
-        parts = ["files", str(request.conversation_id), str(request.task_id), request.file_name]
-        file_path =  "/".join(parts)
+        base_dir = settings.DIRECTORY or "files"
+    
+        file_path =   Path(base_dir) / str(request.conversation_id) / str(request.task_id) / request.file_name
         print(f"请求模型文件地址: {file_path}")
         # 验证文件存在
         if not Path(file_path).is_file():
@@ -93,7 +99,8 @@ async def get_model(request: FileRequest,
                 detail=f"STL 文件不存在: {file_path}"
             )
         # 简单校验扩展名
-        if not file_path.lower().endswith(".stl"):
+        #if not file_path.lower().endswith(".stl"):
+        if file_path.suffix.lower() != ".stl":
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
                 detail="仅支持 .stl 格式文件"
@@ -105,17 +112,20 @@ async def get_model(request: FileRequest,
     
     # 文件级错误
     except PermissionError as e:
+        print(f"文件权限错误: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"无权限读取文件: {e}"
         )
     except OSError as e:
+        print(f"文件系统错误: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"文件读取失败: {e}"
         )
     # 兜底
     except Exception as e:
+        print(f"处理模型文件时发生未知错误: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"未知错误: {e}"
@@ -192,10 +202,11 @@ async def download_file(
         
         # construct user's file path according to conversation_id and task_id
         # 创建任务的文件存放目录
-        # 获取当前目录的上一级目录
-        parent_dir = Path(os.getcwd())
+        # 使用settings中的DIRECTORY作为基础目录，若未设置则默认使用"files"
+        base_dir = Path(settings.DIRECTORY) if settings.DIRECTORY else Path("files")
+  
         # 构建目标目录路径：上一级目录/files/会话ID
-        task_dir = parent_dir / "files" / str(request.conversation_id) / str(request.task_id)
+        task_dir = base_dir / str(request.conversation_id) / str(request.task_id)
         file = task_dir / request.file_name
         # 动态推断 MIME 类型
         media_type, _ = mimetypes.guess_type(file)
