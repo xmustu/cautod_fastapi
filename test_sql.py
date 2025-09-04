@@ -8,7 +8,7 @@ conn = sqlite3.connect('db.sqlite3')
 cursor = conn.cursor()
  
 # 使用 cursor 执行添加列的操作:
-cursor.execute('ALTER TABLE users ADD COLUMN username VARCHAR(255) DEFAULT "user";')
+cursor.execute('ALTER TABLE tasks ADD COLUMN dify_conversation_id VARCHAR(255) DEFAULT "";')
  
 # 提交事务:
 conn.commit()

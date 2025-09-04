@@ -1,0 +1,31 @@
+trigger:
+  branches:
+    include:
+      - master
+      - refs/tags/*
+
+pr:
+- master
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      name: CadQuery/conda-packages
+      endpoint: CadQuery
+
+parameters:
+  - name: minor
+    type: object
+    default:
+      - 13
+
+jobs:
+- ${{ each minor in parameters.minor }}:
+  - template: conda-build.yml@templates
+    parameters:
+      name: Windows
+      vmImage: 'windows-latest'
+      py_maj: 3
+      py_min: ${{minor}}
+      conda_bld: 3.21.6

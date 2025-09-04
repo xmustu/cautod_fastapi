@@ -1,0 +1,24 @@
+1、分析  
+检索到的 cadquery 代码已经实现了一个完整的“机械抓手底座”模型，其几何特征与用户需求高度匹配。该底座由底部圆柱、连接圆柱、抓手框架和抓手导轨组成，并带有用于安装、定位、减重的孔与槽结构，可直接用于自动化抓取机构。因此，库里已有可直接复用的类似文件。
+
+2、参数列表（含推荐值）  
+| 参数名 | 含义 | 推荐值 | 单位 |
+|---|---|---|---|
+| gripper_width | 抓手框架整体宽度 | 120.0 | mm |
+| gripper_length | 抓手框架整体长度 | 250.0 | mm |
+| gripper_height | 抓手框架厚度 | 15.0 | mm |
+| slot_width | 框架中心槽宽度 | 30.0 | mm |
+| rail_width | 导轨宽度 | 10.0 | mm |
+| cylinder_radius | 底部安装圆柱半径 | 50.0 | mm |
+| cylinder_height | 底部安装圆柱高度 | 20.0 | mm |
+| cylinder_height2 | 连接圆柱高度 | 60.0 | mm |
+| hole_circle_radius | 底部十字通孔半径 | 5.0 | mm |
+| joint_radios | 连接圆柱顶部凸台半径 | 30.0 | mm |
+| rail_slot_width | 导轨减重槽宽度 | 3.0 | mm |
+| rail_slot_depth | 导轨减重槽深度 | 1.0 | mm |
+| hole_radius | 导轨安装孔半径 | 2.0 | mm |
+| num_holes | 导轨安装孔数量 | 6 | — |
+| hole_spacing_start | 首孔到导轨端面距离 | 10.0 | mm |
+| hole_spacing_end | 末孔到导轨端面距离 | 10.0 | mm |
+
+以上参数可直接用于生成符合需求的机械抓手底座。

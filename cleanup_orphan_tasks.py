@@ -2,14 +2,14 @@ import asyncio
 from tortoise import Tortoise, run_async
 
 from database.models import Tasks, Conversations
-from settings import TORTOISE_ORM_sqlite
+from database.settings import TORTOISE_ORM_SQLITE
 
 async def cleanup():
     """
     清理孤立的任务记录。
     """
     # 初始化数据库连接
-    await Tortoise.init(config=TORTOISE_ORM_sqlite)
+    await Tortoise.init(config=TORTOISE_ORM_SQLITE)
     await Tortoise.generate_schemas()
 
     # 1. 获取所有任务中的 conversation_id

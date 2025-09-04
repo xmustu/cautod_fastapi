@@ -1,484 +1,221 @@
-=== Êó•ÂøóÂºÄÂßã‰∫é 2025-08-11 11:22:17 ===
+=== Êó•ÂøóÂºÄÂßã‰∫é 2025-08-13 14:03:44 ===
 ¥ÌŒÛ: Cannot perform runtime binding on a null reference
-model path: C:\Users\dell\Projects\CAutoD\wenjian\AutoFrame.SLDPRT
-model save path: C:\Users\dell\Projects\CAutoD\wenjian
-opendoc: C:\Users\dell\Projects\CAutoD\wenjian\AutoFrame.SLDPRT
+model path: C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\AutoFrame.SLDPRT
+model save path: C:\Users\dell\Projects\CAutoD\cautod_fastapi\files
+opendoc: C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\AutoFrame.SLDPRT
 doc type: 1
 processing...
 geting ieqmgr...
 equnum = 8
-"Bottom_main_tube_thick"= 0.01255243m
-equation0 = "Bottom_main_tube_thick"= 0.01255243m  equi_name = "Bottom_main_tube_thick"
+"Bottom_main_tube_thick"= 0.015m
+equation0 = "Bottom_main_tube_thick"= 0.015m  equi_name = "Bottom_main_tube_thick"
 numleft = 26
-numright = 36
-val: 0.01255243
-"Uper_main_tube_thick"= 0.03955737m
-equation1 = "Uper_main_tube_thick"= 0.03955737m  equi_name = "Uper_main_tube_thick"
+numright = 31
+val: 0.015
+"Uper_main_tube_thick"= 0.015m
+equation1 = "Uper_main_tube_thick"= 0.015m  equi_name = "Uper_main_tube_thick"
 numleft = 24
-numright = 34
-val: 0.03955737
-"Support_tube_thick"= 0.01458347m
-equation2 = "Support_tube_thick"= 0.01458347m  equi_name = "Support_tube_thick"
+numright = 29
+val: 0.015
+"Support_tube_thick"= 0.015m
+equation2 = "Support_tube_thick"= 0.015m  equi_name = "Support_tube_thick"
 numleft = 22
-numright = 32
-val: 0.01458347
+numright = 27
+val: 0.015
 "DS_Bottom_main_tube_thick@≤›Õº12" = "Bottom_main_tube_thick"
 "DS_Upper_main_tube_thick@≤›Õº13" = "Uper_main_tube_thick"
 "DS_Support_tube_thick@≤›Õº15" = "Support_tube_thick"
-"Tripod_position"= 1.12977483m
-equation6 = "Tripod_position"= 1.12977483m  equi_name = "Tripod_position"
+"Tripod_position"= 1.65m
+equation6 = "Tripod_position"= 1.65m  equi_name = "Tripod_position"
 numleft = 19
-numright = 29
-val: 1.12977483
+numright = 23
+val: 1.65
 "DS_mid_len@≤›Õº1"="Tripod_position"
 sent 4args to pyt
 loop start
 clock tik...
+clock tik...
 
  recv pyt agrs£¨pprocessing...
-para[0] = 0.011923m
-para[1] = 0.046689m
-para[2] = 0.015937m
-para[3] = 1.174360m
+para[0] = 0.014247m
+para[1] = 0.017704m
+para[2] = 0.016392m
+para[3] = 1.715115m
 found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.0119225m
+new equ: "Bottom_main_tube_thick" = 0.01424724m
 found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.046689m
+new equ: "Uper_main_tube_thick" = 0.01770429m
 found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01593678m
+new equ: "Support_tube_thick" = 0.01639196m
 found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.17435958m
+new equ: "Tripod_position" = 1.7151146m
 macro run success
-mass = 31.088842733871466
-vol = 0.031088842733871466
+mass = 30.809737159234903
+vol = 0.030809737159234903
 reaching global stress...
-max stress: 2183262464
+max stress: 1441537408
 checking...............
 Plot create ret is0
 plt count is 5
 act ret is 0
-snapshot at 1754882600....
-checked dir : C:\Users\dell\Projects\CAutoD\wenjian\PNGFILE
-cal done£∫vol=0.031089£¨stress=2183262464.000000
+snapshot at 1755065077....
+checked dir : C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\PNGFILE
+cal done£∫vol=0.030810£¨stress=1441537408.000000
 clock tik...
 
  recv pyt agrs£¨pprocessing...
-para[0] = 0.010825m
-para[1] = 0.034114m
-para[2] = 0.012006m
-para[3] = 1.295253m
+para[0] = 0.012936m
+para[1] = 0.012936m
+para[2] = 0.012349m
+para[3] = 1.891676m
 found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01082531m
+new equ: "Bottom_main_tube_thick" = 0.01293611m
 found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.03411419m
+new equ: "Uper_main_tube_thick" = 0.01293597m
 found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.0120056m
+new equ: "Support_tube_thick" = 0.0123485m
 found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.29525347m
+new equ: "Tripod_position" = 1.89167626m
 macro run success
-mass = 30.02019935584218
-vol = 0.03002019935584218
-CWResult null£¨no global stress
-cal done£∫vol=0.030020£¨stress=0.000000
+mass = 27.084313483949504
+vol = 0.027084313483949504
+reaching global stress...
+max stress: 1706691712
+checking...............
+Plot create ret is0
+plt count is 5
+act ret is 0
+snapshot at 1755065093....
+checked dir : C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\PNGFILE
+cal done£∫vol=0.027084£¨stress=1706691712.000000
 clock tik...
 
  recv pyt agrs£¨pprocessing...
-para[0] = 0.010825m
-para[1] = 0.034114m
-para[2] = 0.012006m
-para[3] = 1.295253m
+para[0] = 0.015607m
+para[1] = 0.016248m
+para[2] = 0.012124m
+para[3] = 1.960141m
 found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01082531m
+new equ: "Bottom_main_tube_thick" = 0.01560669m
 found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.03411419m
+new equ: "Uper_main_tube_thick" = 0.01624844m
 found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.0120056m
+new equ: "Support_tube_thick" = 0.01212351m
 found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.29525347m
+new equ: "Tripod_position" = 1.9601405m
 macro run success
-mass = 30.02019935584218
-vol = 0.03002019935584218
-CWResult null£¨no global stress
-cal done£∫vol=0.030020£¨stress=0.000000
+mass = 30.42730853966074
+vol = 0.03042730853966074
+reaching global stress...
+max stress: 1614290176
+checking...............
+Plot create ret is0
+plt count is 5
+act ret is 0
+snapshot at 1755065112....
+checked dir : C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\PNGFILE
+cal done£∫vol=0.030427£¨stress=1614290176.000000
 clock tik...
 
  recv pyt agrs£¨pprocessing...
-para[0] = 0.010825m
-para[1] = 0.034114m
-para[2] = 0.012006m
-para[3] = 1.295253m
+para[0] = 0.015607m
+para[1] = 0.017714m
+para[2] = 0.016097m
+para[3] = 1.795614m
 found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01082531m
+new equ: "Bottom_main_tube_thick" = 0.01560669m
 found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.03411419m
+new equ: "Uper_main_tube_thick" = 0.0177135m
 found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.0120056m
+new equ: "Support_tube_thick" = 0.01609741m
 found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.29525347m
+new equ: "Tripod_position" = 1.79561427m
 macro run success
-mass = 30.02019935584218
-vol = 0.03002019935584218
-CWResult null£¨no global stress
-cal done£∫vol=0.030020£¨stress=0.000000
+mass = 31.7556199007826
+vol = 0.0317556199007826
+reaching global stress...
+max stress: 1633983616
+checking...............
+Plot create ret is0
+plt count is 5
+act ret is 0
+snapshot at 1755065132....
+checked dir : C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\PNGFILE
+cal done£∫vol=0.031756£¨stress=1633983616.000000
 clock tik...
 
  recv pyt agrs£¨pprocessing...
-para[0] = 0.010825m
-para[1] = 0.034114m
-para[2] = 0.012006m
-para[3] = 1.295253m
+para[0] = 0.014821m
+para[1] = 0.016239m
+para[2] = 0.012444m
+para[3] = 1.961484m
 found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01082531m
+new equ: "Bottom_main_tube_thick" = 0.0148213m
 found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.03411419m
+new equ: "Uper_main_tube_thick" = 0.01623908m
 found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.0120056m
+new equ: "Support_tube_thick" = 0.012444m
 found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.29525347m
+new equ: "Tripod_position" = 1.96148447m
 macro run success
-mass = 30.02019935584218
-vol = 0.03002019935584218
-CWResult null£¨no global stress
-cal done£∫vol=0.030020£¨stress=0.000000
+mass = 30.11644844527557
+vol = 0.03011644844527557
+reaching global stress...
+max stress: 1705218560
+checking...............
+Plot create ret is0
+plt count is 5
+act ret is 0
+snapshot at 1755065151....
+checked dir : C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\PNGFILE
+cal done£∫vol=0.030116£¨stress=1705218560.000000
 clock tik...
 
  recv pyt agrs£¨pprocessing...
-para[0] = 0.013060m
-para[1] = 0.042850m
-para[2] = 0.011787m
-para[3] = 1.342132m
+para[0] = 0.015607m
+para[1] = 0.016248m
+para[2] = 0.012124m
+para[3] = 1.974696m
 found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01306013m
+new equ: "Bottom_main_tube_thick" = 0.01560669m
 found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04284969m
+new equ: "Uper_main_tube_thick" = 0.01624844m
 found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01178685m
+new equ: "Support_tube_thick" = 0.01212351m
 found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.34213176m
+new equ: "Tripod_position" = 1.97469586m
 macro run success
-mass = 31.524092190552032
-vol = 0.03152409219055203
-CWResult null£¨no global stress
-cal done£∫vol=0.031524£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.013060m
-para[1] = 0.042850m
-para[2] = 0.011787m
-para[3] = 1.342132m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01306013m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04284969m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01178685m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.34213176m
-macro run success
-mass = 31.524092190552032
-vol = 0.03152409219055203
-CWResult null£¨no global stress
-cal done£∫vol=0.031524£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.013060m
-para[1] = 0.042850m
-para[2] = 0.011787m
-para[3] = 1.342132m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01306013m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04284969m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01178685m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.34213176m
-macro run success
-mass = 31.524092190552032
-vol = 0.03152409219055203
-CWResult null£¨no global stress
-cal done£∫vol=0.031524£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.013060m
-para[1] = 0.042850m
-para[2] = 0.011787m
-para[3] = 1.342132m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01306013m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04284969m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01178685m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.34213176m
-macro run success
-mass = 31.524092190552032
-vol = 0.03152409219055203
-CWResult null£¨no global stress
-cal done£∫vol=0.031524£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.010825m
-para[1] = 0.034717m
-para[2] = 0.011841m
-para[3] = 1.295253m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01082531m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.03471708m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01184143m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.29525347m
-macro run success
-mass = 29.986535002252992
-vol = 0.02998653500225299
-CWResult null£¨no global stress
-cal done£∫vol=0.029987£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.010825m
-para[1] = 0.034717m
-para[2] = 0.011841m
-para[3] = 1.295253m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01082531m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.03471708m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01184143m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.29525347m
-macro run success
-mass = 29.986535002252992
-vol = 0.02998653500225299
-CWResult null£¨no global stress
-cal done£∫vol=0.029987£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.010825m
-para[1] = 0.034717m
-para[2] = 0.011841m
-para[3] = 1.295253m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01082531m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.03471708m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01184143m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.29525347m
-macro run success
-mass = 29.986535002252992
-vol = 0.02998653500225299
-CWResult null£¨no global stress
-cal done£∫vol=0.029987£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.010825m
-para[1] = 0.034717m
-para[2] = 0.011841m
-para[3] = 1.295253m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01082531m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.03471708m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01184143m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.29525347m
-macro run success
-mass = 29.986535002252992
-vol = 0.02998653500225299
-CWResult null£¨no global stress
-cal done£∫vol=0.029987£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.011923m
-para[1] = 0.047391m
-para[2] = 0.015937m
-para[3] = 1.191232m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.0119225m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04739067m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01593678m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.19123219m
-macro run success
-mass = 31.290213058209734
-vol = 0.03129021305820973
-CWResult null£¨no global stress
-cal done£∫vol=0.031290£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.011923m
-para[1] = 0.047391m
-para[2] = 0.015937m
-para[3] = 1.191232m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.0119225m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04739067m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01593678m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.19123219m
-macro run success
-mass = 31.290213058209734
-vol = 0.03129021305820973
-CWResult null£¨no global stress
-cal done£∫vol=0.031290£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.011923m
-para[1] = 0.047391m
-para[2] = 0.015937m
-para[3] = 1.191232m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.0119225m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04739067m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01593678m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.19123219m
-macro run success
-mass = 31.290213058209734
-vol = 0.03129021305820973
-CWResult null£¨no global stress
-cal done£∫vol=0.031290£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.011923m
-para[1] = 0.047391m
-para[2] = 0.015937m
-para[3] = 1.191232m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.0119225m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04739067m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01593678m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.19123219m
-macro run success
-mass = 31.290213058209734
-vol = 0.03129021305820973
-CWResult null£¨no global stress
-cal done£∫vol=0.031290£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.013060m
-para[1] = 0.042247m
-para[2] = 0.011787m
-para[3] = 1.342132m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01306013m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04224689m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01178685m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.34213176m
-macro run success
-mass = 31.53269630916546
-vol = 0.031532696309165456
-CWResult null£¨no global stress
-cal done£∫vol=0.031533£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.013060m
-para[1] = 0.042247m
-para[2] = 0.011787m
-para[3] = 1.342132m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01306013m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04224689m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01178685m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.34213176m
-macro run success
-mass = 31.53269630916546
-vol = 0.031532696309165456
-CWResult null£¨no global stress
-cal done£∫vol=0.031533£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.013060m
-para[1] = 0.042247m
-para[2] = 0.011787m
-para[3] = 1.342132m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01306013m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04224689m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01178685m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.34213176m
-macro run success
-mass = 31.53269630916546
-vol = 0.031532696309165456
-CWResult null£¨no global stress
-cal done£∫vol=0.031533£¨stress=0.000000
-clock tik...
-
- recv pyt agrs£¨pprocessing...
-para[0] = 0.013060m
-para[1] = 0.042247m
-para[2] = 0.011787m
-para[3] = 1.342132m
-found "Bottom_main_tube_thick", modifying...
-new equ: "Bottom_main_tube_thick" = 0.01306013m
-found "Uper_main_tube_thick", modifying...
-new equ: "Uper_main_tube_thick" = 0.04224689m
-found "Support_tube_thick", modifying...
-new equ: "Support_tube_thick" = 0.01178685m
-found "Tripod_position", modifying...
-new equ: "Tripod_position" = 1.34213176m
-macro run success
-mass = 31.53269630916546
-vol = 0.031532696309165456
-CWResult null£¨no global stress
-cal done£∫vol=0.031533£¨stress=0.000000
+mass = 30.46649015298707
+vol = 0.03046649015298707
+reaching global stress...
+max stress: 1602882048
+checking...............
+Plot create ret is0
+plt count is 5
+act ret is 0
+snapshot at 1755065170....
+checked dir : C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\PNGFILE
+cal done£∫vol=0.030466£¨stress=1602882048.000000
 clock tik...
 terminate call£¨exiting...
-vals saved: C:\Users\dell\Projects\CAutoD\wenjian\glb_val.txt
+vals saved: C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\glb_val.txt
 model saved
 closing model...
 trying to kill proc...
-killed proc: SLDWORKS (PID: 37600)
-ºö
-   Bottom_main_tube_thickÔºö0.011922
-   Uper_main_tube_thickÔºö0.046689
-   Support_tube_thickÔºö0.015937
-   Tripod_positionÔºö1.174360
+killed proc: SLDWORKS (PID: 45176)
+ÂåñÁªìÊûúËØ¶ÁªÜ‰ø°ÊÅØ ===
+1. ÊúÄ‰ºòÂèÇÊï∞Ôºö
+   Bottom_main_tube_thickÔºö0.015607
+   Uper_main_tube_thickÔºö0.016248
+   Support_tube_thickÔºö0.012124
+   Tripod_positionÔºö1.960141
 
-2. ÊúÄ‰ºò‰ΩìÁßØÔºö0.031089
-3. ÊúÄ‰ºòÂ∫îÂäõÔºö2183262464.000000
+2. ÊúÄ‰ºò‰ΩìÁßØÔºö0.030427
+3. ÊúÄ‰ºòÂ∫îÂäõÔºö1614290176.000000
 
 4. Á∫¶ÊùüÊù°‰ª∂ÔºöÊúÄÂ§ßÂÖÅËÆ∏Â∫îÂäõ = 1667155999.000000
-   Êó†ÂèØË°åËß£ÔºåÈÄâ‰∏≠‰ΩìÁßØÊúÄÂ∞èÁöÑ‰∏çÂèØË°åËß£
+   Á¨¶ÂêàÁ∫¶ÊùüË¶ÅÊ±Ç
 
-=== subËøõÁ®ãÂ∑≤ÈÄÄÂá∫ÔºåÈÄÄÂá∫Á†Å: 0ÔºåÊó∂Èó¥: 2025-08-11 11:26:21 ===
+=== subËøõÁ®ãÂ∑≤ÈÄÄÂá∫ÔºåÈÄÄÂá∫Á†Å: 0ÔºåÊó∂Èó¥: 2025-08-13 14:06:13 ===
 
-=== Á®ãÂ∫èÁªìÊùü‰∫é 2025-08-11 11:26:48 ===
+=== Á®ãÂ∫èÁªìÊùü‰∫é 2025-08-13 14:06:22 ===

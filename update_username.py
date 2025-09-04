@@ -2,14 +2,14 @@ import asyncio
 from tortoise import Tortoise, run_async
 
 from database.models import Users
-from settings import TORTOISE_ORM_sqlite
+from database.settings import TORTOISE_ORM_SQLITE
 
 async def update_user():
     """
     更新指定用户的用户名。
     """
     # 初始化数据库连接
-    await Tortoise.init(config=TORTOISE_ORM_sqlite)
+    await Tortoise.init(config=TORTOISE_ORM_SQLITE)
     await Tortoise.generate_schemas()
 
     user_id_to_update = 1

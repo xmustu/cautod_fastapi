@@ -4,14 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from apps.router import router
-from apps.app01 import user
-from apps.app02 import geometry
-from apps.app03 import optimize
+from apps.user import user
+from apps.geometry import geometry
+from apps.optimize import optimize
 from apps.tasks import router as tasks_router
 
 from core.middleware import count_time_middleware, request_response_middleware
 from tortoise.contrib.fastapi import register_tortoise
-from settings import TORTOISE_ORM_sqlite, TORTOISE_ORM_mysql
+from database.settings import TORTOISE_ORM_sqlite, TORTOISE_ORM_mysql
 from contextlib import asynccontextmanager
 from database.redis import redis_connect
 
