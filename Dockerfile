@@ -1,38 +1,39 @@
 # 使用多阶段构建来减小最终镜像大小
 # 构建阶段
-FROM python:3.10-slim as builder
+# FROM python:3.10-slim as builder
+FROM python3.10-custom:v1 as builder
 
 # 设置工作目录
 WORKDIR /app
 
 # 更换Debian软件源为阿里云镜像源以提高下载速度
-RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak && \
-    echo "deb http://mirrors.aliyun.com/debian/ bullseye main non-free contrib" > /etc/apt/sources.list && \
-    echo "deb-src http://mirrors.aliyun.com/debian/ bullseye main non-free contrib" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/debian-security/ bullseye-security main" >> /etc/apt/sources.list && \
-    echo "deb-src http://mirrors.aliyun.com/debian-security/ bullseye-security main" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/debian/ bullseye-updates main non-free contrib" >> /etc/apt/sources.list && \
-    echo "deb-src http://mirrors.aliyun.com/debian/ bullseye-updates main non-free contrib" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.aliyun.com/debian/ bullseye-backports main non-free contrib" >> /etc/apt/sources.list && \
-    echo "deb-src http://mirrors.aliyun.com/debian/ bullseye-backports main non-free contrib" >> /etc/apt/sources.list
+# RUN echo "deb http://mirrors.aliyun.com/debian/ bullseye main" > /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/debian-security/ bullseye-security main" >> /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/debian/ bullseye-updates main" >> /etc/apt/sources.list
 
-# 安装构建依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+# RUN echo "deb http://mirrors.aliyun.com/debian/ trixie main non-free contrib" > /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/debian-security/ trixie-security main non-free contrib" >> /etc/apt/sources.list && \
+#     echo "deb http://mirrors.aliyun.com/debian/ trixie-updates main non-free contrib" >> /etc/apt/sources.list && \
+
+# # 安装构建依赖
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     gcc \
+#     g++ \
+#     git \
+#     && rm -rf /var/lib/apt/lists/*
 
 # 复制requirements文件
 COPY requirements.txt .
 
+# 在原来的命令行后面添加一个注释，触发缓存失效
 # 安装Python依赖到本地目录
 RUN pip install --user --no-cache-dir -r requirements.txt && \
     pip install --user --no-cache-dir git+https://github.com/CadQuery/cadquery.git && \
     pip install --user --no-cache-dir -e "git+https://github.com/CadQuery/cadquery-plugins.git#egg=gear_generator&subdirectory=plugins/gear_generator"
 
 # 生产阶段
-FROM python:3.10-slim
+# FROM python:3.10-slim
+FROM python3.10-custom:v1
 
 # 设置工作目录
 WORKDIR /app
