@@ -1,6 +1,0 @@
-# ignore files generated from templates
-construct.yaml
-post-install.bat
-post-install.sh
-build/
-
