@@ -1,5 +1,6 @@
 fastapi
-uvicorn
+typing_extensions>=4.0.0
+uvicorn>=0.23.2  # 确保uvicorn版本兼容
 pydantic
 python-multipart
 aerich
@@ -8,8 +9,8 @@ aiosqlite
 aiomysql
 pyjwt
 sqlalchemy
-passlib
-bcrypt
+passlib==1.7.4
+bcrypt==4.3.0
 sse-starlette
 authlib
 pydantic-settings

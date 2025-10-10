@@ -54,7 +54,8 @@ async def save_file(file, path: Optional[str] = None, conversation_id: int = Non
     res = await file.read()
     #hash_name = hashlib.md5(file.filename.encode()).hexdigest()[:16]
     #file_name = f"{hash_name}.{file.filename.rsplit('.', 1)[-1]}"
-    full_file = f"{path}\{file.filename}"
+    # full_file = f"{path}\{file.filename}"
+    full_file = str(Path(path) / file.filename)
     with open(full_file, "wb") as f:
         f.write(res)
     await file.close()

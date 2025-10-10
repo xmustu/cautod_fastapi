@@ -150,7 +150,7 @@ async def geometry_stream_generator(
         # markdownsign ="```"
         # yield f'event: text_chunk\ndata: {SSETextChunk(text=markdownsign).model_dump_json()}\n\n'
         # 获取建议问题
-        suggested_questions = await client.Next_Suggested_Questions()
+        suggested_questions = {"result": "success", "data": []} # await client.Next_Suggested_Questions()
 
 
 
@@ -197,7 +197,8 @@ async def geometry_stream_generator(
             image_file_name = "Oblique_View.png"
 
             # 定义路径片段
-            base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
+            # base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
+            base_dir = settings.STATIC_URL if settings.STATIC_URL else "/files"
             # 用 "/" 拼接路径
             image_url = rf"{base_dir}/{request.conversation_id}/{request.task_id}/{image_file_name}"
             #image_url = os.path.join("/files", str(request.conversation_id), str(task.task_id), imgage_file_name)

@@ -21,7 +21,8 @@ from database.settings import TORTOISE_ORM_SQLITE, TORTOISE_ORM_MYSQL
 from database.sql import register_sql
 from database.redis import redis_connect
 from core.geometry import start_mcp, dify_api_port_forward
-from api.mcp_server import mcp_cadquery
+from cleanup_orphan_tasks import cleanup
+
 from config import settings
 log_dir = Path("./logs")
 log_dir.mkdir(parents=True, exist_ok=True)  # 创建目录（若不存在）
@@ -37,12 +38,14 @@ async def lifespan(app: FastAPI):
     
     #连接数据库
     app.state.redis = await redis_connect()  # 连接到 Redis 数据库
+
+
     #获取动态配置
 
     #启用第三方的服务
     #mcp_process = await start_mcp()
     #print("执行过了吗")
-    dify_api_process = await dify_api_port_forward()
+    # dify_api_process = await dify_api_port_forward()
 
     #其他
     yield
@@ -58,12 +61,12 @@ async def lifespan(app: FastAPI):
     #print("stdout: ", mcp_process.stdout)
     #print("stderr: ", mcp_process.stderr)
     #mcp_process.terminate()
-    dify_api_process.terminate()
+    # dify_api_process.terminate()
     #其他
     
 
 
-app = FastAPI()
+# app = FastAPI()
 
 
 
@@ -85,24 +88,24 @@ exclude_patterns = [
 
 
 
-# gengerate the ASGI app for MCP
-mcp_app = mcp_cadquery(app)
+# # gengerate the ASGI app for MCP
+# mcp_app = mcp_cadquery(app)
 
 
-# Combine both lifespans
-@asynccontextmanager
-async def combined_lifespan(app: FastAPI):
-    # Run both lifespans
-    async with lifespan(app):
-        async with mcp_app.lifespan(app):
-            yield
+# # Combine both lifespans
+# @asynccontextmanager
+# async def combined_lifespan(app: FastAPI):
+#     # Run both lifespans
+#     async with lifespan(app):
+#         async with mcp_app.lifespan(app):
+#             yield
 
 
 # Key: Pass lifespan to FastAPI
-app = FastAPI(lifespan=combined_lifespan)
+app = FastAPI(lifespan=lifespan)
 
 # Mount the MCP server
-app.mount("/analytics",mcp_app)
+# app.mount("/analytics",mcp_app)
 
 # --- 新增：挂载静态文件目录 ---
 # 创建 files 目录（如果不存在）
@@ -126,7 +129,7 @@ origins = [
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,#allow_origins=origins,
+    allow_origins=["*"],#allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -135,22 +138,31 @@ app.add_middleware(
 # count_time_middleware(app)  # 计时中间件
 
 # app.add_middleware(FullRequestLoggerMiddleware)
+print(settings.SQLMODE)
+if settings.SQLMODE == "MYSQL":
+    config = TORTOISE_ORM_MYSQL
+else:
+    config = TORTOISE_ORM_SQLITE
 register_tortoise(
     app,
-    config=TORTOISE_ORM_SQLITE,  # 使用 MySQL 配置
+    config=config,  # 使用 MySQL 配置
     generate_schemas=True,  # 在应用启动时自动创建数据库表
     add_exception_handlers=True,
 )
+print("daozhe ")
+
+
+
 app.include_router(user, prefix="/api/user", tags=["用户部分", ])
 app.include_router(geometry, prefix="/api/geometry", tags=["几何建模", ])
 app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
 app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
 app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
-
+print("到这")
 # 显式加载日志配置文件
 with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:
     log_config = json.load(f)
     
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="127.0.0.1", log_config=log_config, port=8080,  log_level="debug",reload=True, reload_excludes=exclude_patterns)
+    uvicorn.run("main:app", host="127.0.0.1", port=8080,  log_level="debug",reload=False, reload_excludes=exclude_patterns, workers=4)

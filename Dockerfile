@@ -1,39 +1,52 @@
 # 使用多阶段构建来减小最终镜像大小
 # 构建阶段
-# FROM python:3.10-slim as builder
-FROM python3.10-custom:v1 as builder
-
+FROM python:3.10-slim as builder
+# FROM python:3.13-windowsservercore-ltsc2025 as builder
 # 设置工作目录
 WORKDIR /app
 
-# 更换Debian软件源为阿里云镜像源以提高下载速度
-# RUN echo "deb http://mirrors.aliyun.com/debian/ bullseye main" > /etc/apt/sources.list && \
-#     echo "deb http://mirrors.aliyun.com/debian-security/ bullseye-security main" >> /etc/apt/sources.list && \
-#     echo "deb http://mirrors.aliyun.com/debian/ bullseye-updates main" >> /etc/apt/sources.list
+# 复制所有项目文件
+COPY . .
 
-# RUN echo "deb http://mirrors.aliyun.com/debian/ trixie main non-free contrib" > /etc/apt/sources.list && \
-#     echo "deb http://mirrors.aliyun.com/debian-security/ trixie-security main non-free contrib" >> /etc/apt/sources.list && \
-#     echo "deb http://mirrors.aliyun.com/debian/ trixie-updates main non-free contrib" >> /etc/apt/sources.list && \
-
-# # 安装构建依赖
-# RUN apt-get update && apt-get install -y --no-install-recommends \
+# 安装构建依赖
+# RUN sed -i 's|http://deb.debian.org/debian|http://mirrors.aliyun.com/debian|g' /etc/apt/sources.list \
+#     && apt-get update && apt-get install -y --no-install-recommends \
 #     gcc \
 #     g++ \
-#     git \
 #     && rm -rf /var/lib/apt/lists/*
+
+# RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
+# 强制安装所有依赖（忽略setup.py中的环境判断）
+# RUN pip install --user --no-cache-dir \
+#     "cadquery-ocp>=7.8.1,<7.9" \
+#     "ezdxf>=1.3.0" \
+#     "multimethod>=1.11,<2.0" \
+#     "nlopt>=2.9.0,<3.0" \
+#     "typish" \
+#     "casadi" \
+#     "path" \
+#     "trame" \
+#     "trame-vtk" \
+#     "typing_extensions"
+# # 进入cadquery目录并安装
+# WORKDIR /app/cadquery
+# RUN pip install --user --no-cache-dir .
+
+# # 进入cadquery-plugins/plugins/gear_generator目录并安装
+# WORKDIR /app/cadquery-plugins/plugins/gear_generator
+# RUN pip install --user --no-cache-dir -e .
+
+# 返回到主工作目录
+WORKDIR /app
 
 # 复制requirements文件
 COPY requirements.txt .
 
-# 在原来的命令行后面添加一个注释，触发缓存失效
-# 安装Python依赖到本地目录
-RUN pip install --user --no-cache-dir -r requirements.txt && \
-    pip install --user --no-cache-dir git+https://github.com/CadQuery/cadquery.git && \
-    pip install --user --no-cache-dir -e "git+https://github.com/CadQuery/cadquery-plugins.git#egg=gear_generator&subdirectory=plugins/gear_generator"
+# 安装Python依赖到本地目录（排除已安装的cadquery）
+RUN pip install --user --no-cache-dir -r requirements.txt
 
 # 生产阶段
-# FROM python:3.10-slim
-FROM python3.10-custom:v1
+FROM python:3.10-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -57,9 +70,6 @@ ENV PATH=/root/.local/bin:$PATH
 
 # 复制项目文件
 COPY . .
-
-# 替换gear_generator插件的main.py文件
-RUN cp api/main.py src/gear-generator/plugins/gear_generator/gear_generator/main.py
 
 # 创建必要的目录和文件
 RUN mkdir -p files logs migrations && \

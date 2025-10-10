@@ -291,7 +291,8 @@ async def optimize_stream_generator(
                 await algorithm_client.close()  # 关闭算法客户端连接
 
                 # 9. 采用新的图片流式方案并更新Redis
-                base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
+                #base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
+                base_dir = settings.STATIC_URL if settings.STATIC_URL else "/files"
                 mock_images = [
                     {"path": rf"{base_dir}/{request.conversation_id}/{request.task_id}/convergence_curve.png", "alt": "收敛曲线"},
                     {"path": rf"{base_dir}/{request.conversation_id}/{request.task_id}/parameter_distribution.png", "alt": "参数分布图"}

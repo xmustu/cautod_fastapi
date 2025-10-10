@@ -9,10 +9,27 @@ from fastmcp import FastMCP
 from fastapi import Request
 from fastapi import FastAPI
 import time 
+import uvicorn
 from fastmcp.server.middleware import Middleware, MiddlewareContext
-
+import asyncio
 from database.models import OptimizationResults, Tasks, GeometryResults
+
+from tortoise import Tortoise
+from database.settings import TORTOISE_ORM_SQLITE  # 或 TORTOISE_ORM_MYSQL，根据你的配置
+from contextlib import asynccontextmanager
 from config import settings
+async def init_db():
+    await Tortoise.init(config=settings.SQLMODE)
+    await Tortoise.generate_schemas()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await Tortoise.init(config=settings.SQLMODE)
+    await Tortoise.generate_schemas()
+    print("数据库初始化完成，启动MCP服务器...")
+    yield
+    await Tortoise.close_connections()
+
 
 async def obtain_work_dir(dify_conversation_id: str,
                           max_attempts: int = 10, 
@@ -120,64 +137,68 @@ class RequestLoggerMiddleware(Middleware):
 # BASE_OUT = "C:\\\\Users\\\\dell\\\\Projects\\\\cadquery_test\\\\cadquery_test\\\\mcp_server\\\\mcp_output"
 
 
-def mcp_cadquery(app: FastAPI):
-    mcp = FastMCP.from_fastapi(app=app, name="cadquery_exe_mcp")
-    mcp.add_middleware(RequestLoggerMiddleware())
+
+mcp = FastMCP(name="cadquery_exe_mcp",
+              instructions="single-tool cadquery executor",
+              lifespan=lifespan
+            )
+#mcp.add_middleware(RequestLoggerMiddleware())
 
 
-        
-    @mcp.tool
-    async def run_cadquery(cadquery_code: str, conversation_id: str) -> dict:
-        """
-        功能：执行CADQuery代码并生成3D模型相关文件
-        
-        该工具会完成一系列自动化操作：
-        1. 创建唯一的临时工作目录
-        2. 将输入的CADQuery代码写入脚本文件
-        3. 自动补充模型导出代码（如未包含）
-        4. 执行CADQuery代码生成3D模型
-        5. 导出STEP格式模型文件和多角度视图图片
-        6. 捕获并处理执行过程中的错误
-        7. 返回包含执行结果的字典
-        
-        输入：
-            cadquery_code (str): 符合CADQuery语法的Python代码字符串，应包含3D模型定义
-                                并将最终模型赋值给'result'变量
-        
-        输出：
-            dict: 包含执行结果的字典，有两种可能结构：
-                - 成功时: {"success": True, "step_file": 生成的STEP文件路径}
-                - 失败时: {"success": False, "error": 错误描述字符串, "error_file": 错误详情文件路径}
-        """
-        # 新增！根据dify conversation id to fin work directory 2025-8-25
-        print("收到会话ID: ", conversation_id)
-        work_dir = await obtain_work_dir(conversation_id)
-        print("对应任务工作目录: ", work_dir)
-        # 依赖检查
-        try:
-            import cadquery as cq
-        except ImportError:
-            sys.exit("缺少 cadquery：pip install cadquery")
+    
+@mcp.tool
+async def run_cadquery(cadquery_code: str, conversation_id: str) -> dict:
+    """
+    功能：执行CADQuery代码并生成3D模型相关文件
+    
+    该工具会完成一系列自动化操作：
+    1. 创建唯一的临时工作目录
+    2. 将输入的CADQuery代码写入脚本文件
+    3. 自动补充模型导出代码（如未包含）
+    4. 执行CADQuery代码生成3D模型
+    5. 导出STEP格式模型文件和多角度视图图片
+    6. 导出STL格式模型文件
+    7. 捕获并处理执行过程中的错误
+    8. 返回包含执行结果的字典
 
-        try:
-            os.makedirs(work_dir,exist_ok=True)
-            print(f"文件夹 '{work_dir}' 创建成功或已存在")
-        except OSError as e:
-            print(f"创建文件夹失败: {e}")
-        script_py = work_dir / "script.py"
-        model_step = work_dir / "model.step"
-        model_stl = work_dir / "model.stl"
-        error_txt = work_dir / "error.txt"
-        image_png = work_dir / "Oblique_View.png"
+    输入：
+        cadquery_code (str): 符合CADQuery语法的Python代码字符串，应包含3D模型定义
+                            并将最终模型赋值给'result'变量
+    
+    输出：
+        dict: 包含执行结果的字典，有两种可能结构：
+            - 成功时: {"success": True, "step_file": 生成的STEP文件路径}
+            - 失败时: {"success": False, "error": 错误描述字符串, "error_file": 错误详情文件路径}
+    """
+    # 新增！根据dify conversation id to fin work directory 2025-8-25
+    print("收到会话ID: ", conversation_id)
+    work_dir = await obtain_work_dir(conversation_id)
+    print("对应任务工作目录: ", work_dir)
+    # 依赖检查
+    try:
+        import cadquery as cq
+    except ImportError:
+        sys.exit("缺少 cadquery：pip install cadquery")
 
-        # 确保代码最终导出 STEP
-        code = cadquery_code
-        if "result.export" not in code:
-            code += f"\nresult.export(r'{model_step}')"
-            code += f"\ncq.exporters.export(result, r'{model_stl}', 'STL')"
-            code += "\nfrom cadquery.vis import show"
-            # code += "\nimport pyvista as pv  # cadquery的可视化依赖"
-            # code += "\nfrom cadquery import exporters"
+    try:
+        os.makedirs(work_dir,exist_ok=True)
+        print(f"文件夹 '{work_dir}' 创建成功或已存在")
+    except OSError as e:
+        print(f"创建文件夹失败: {e}")
+    script_py = work_dir / "script.py"
+    model_step = work_dir / "model.step"
+    model_stl = work_dir / "model.stl"
+    error_txt = work_dir / "error.txt"
+    image_png = work_dir / "Oblique_View.png"
+
+    # 确保代码最终导出 STEP
+    code = cadquery_code
+    if "result.export" not in code:
+        code += f"\nresult.export(r'{model_step}')"
+        code += f"\ncq.exporters.export(result, r'{model_stl}', 'STL')"
+        # code += "\nfrom cadquery.vis import show"
+        # code += "\nimport pyvista as pv  # cadquery的可视化依赖"
+        # code += "\nfrom cadquery import exporters"
 #             code += f'''
 # exporters.export(
 #     result,
@@ -192,40 +213,41 @@ def mcp_cadquery(app: FastAPI):
 #         "renderer": "matplotlib"  # 使用 matplotlib 后端（无需窗口）
 #     }}
 # )'''
-            # code += "\npv.OFF_SCREEN = True  # 启用离线渲染模式"
-            code += f"\nshow(result, title='斜视图', roll=10, elevation=-65, screenshot=r'{image_png}', interact=False)"
-            # code += f"\nshow(result, title='主视图', roll=0, elevation=90, screenshot='{ws}\\\\front_view.png', interact=False)"
-            # code += f"\nshow(result, title='侧视图', roll=90, elevation=90, screenshot='{ws}\\\\side_view.png', interact=False)"
-            # code += f"\nshow(result, title='俯视图', roll=0, elevation=0, screenshot='{ws}\\\\top_view.png', interact=False)"
+        # code += "\npv.OFF_SCREEN = True  # 启用离线渲染模式"
+        # code += f"\nshow(result, title='斜视图', roll=10, elevation=-65, screenshot=r'{image_png}', interact=False)"
+        # code += f"\nshow(result, title='主视图', roll=0, elevation=90, screenshot='{ws}\\\\front_view.png', interact=False)"
+        # code += f"\nshow(result, title='侧视图', roll=90, elevation=90, screenshot='{ws}\\\\side_view.png', interact=False)"
+        # code += f"\nshow(result, title='俯视图', roll=0, elevation=0, screenshot='{ws}\\\\top_view.png', interact=False)"
 
-        # 保存脚本
-        # script_py.write_text(code, encoding="utf-8")
+    # 保存脚本
+    # script_py.write_text(code, encoding="utf-8")
 
-        try:
-        # 将字符串写入Python文件
-            with open(script_py, 'w', encoding='utf-8') as f:
-                f.write(code)
-            print(f"已将代码保存到 {script_py}")
-        except Exception as e:
-            print(f"保存代码时出错: {e}")
-        # 执行
-        try:
-            exec_globals = {"cq": cq, "result": None, "__file__": str(script_py)}
-            exec(code, exec_globals)
+    try:
+    # 将字符串写入Python文件
+        with open(script_py, 'w', encoding='utf-8') as f:
+            f.write(code)
+        print(f"已将代码保存到 {script_py}")
+    except Exception as e:
+        print(f"保存代码时出错: {e}")
+    # 执行
+    try:
+        exec_globals = {"cq": cq, "result": None, "__file__": str(script_py)}
+        exec(code, exec_globals)
 
-            if not os.path.exists(model_step):
-                raise RuntimeError("STEP 文件未生成")
-            print(f"模型已导出到 {model_step}\n预览图已导出到{image_png}\n")
+        if not os.path.exists(model_step):
+            raise RuntimeError("STEP 文件未生成")
+        print(f"模型已导出到 {model_step}\n预览图已导出到{image_png}\n")
 
-            # 新增！保存结果到数据库 2025-8-25
-            await save_geometry_result(conversation_id, work_dir=work_dir)
-            return {"success": True, "step_file": model_step}
-        except Exception as e:
-            with open(error_txt, 'w', encoding='utf-8') as f:
-                f.write(f"{e}\n\n{traceback.format_exc()}")
-            return {"success": False, "error": str(e), "error_file": error_txt}
-        
+        # 新增！保存结果到数据库 2025-8-25
+        await save_geometry_result(conversation_id, work_dir=work_dir)
+        return {"success": True, "step_file": model_step}
+    except Exception as e:
+        with open(error_txt, 'w', encoding='utf-8') as f:
+            f.write(f"{e}\n\n{traceback.format_exc()}")
+        return {"success": False, "error": str(e), "error_file": error_txt}
+    
 
-        # Create ASGI app from MCP server
-    mcp_app = mcp.http_app(transport="sse")  # 致命改动，吐血调半天，传递参数transport="sse",endpoint则附加/sse
-    return mcp_app
+mcp_app = mcp.http_app(transport="sse")  # 致命改动，吐血调半天，传递参数transport="sse",endpoint则附加/sse
+
+if __name__ == '__main__':
+    uvicorn.run("mcp_server:mcp_app", host="127.0.0.1", port=8095,  log_level="info",reload=False, workers=4)
