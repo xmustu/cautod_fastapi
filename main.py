@@ -24,6 +24,8 @@ from core.geometry import start_mcp, dify_api_port_forward
 from cleanup_orphan_tasks import cleanup
 
 from config import settings
+from configs.celery_utils import create_celery
+
 log_dir = Path("./logs")
 log_dir.mkdir(parents=True, exist_ok=True)  # 创建目录（若不存在）
 
@@ -116,6 +118,8 @@ app.mount(settings.STATIC_URL, StaticFiles(directory=settings.STATIC_DIR), name=
 origins = [
     "http://localhost:5173",  # 允许 Vite 开发服务器的源
     "http://127.0.0.1:5173", # 有时浏览器会使用 127.0.0.1
+    "http://localhost:5172",  # 允许 Vite 开发服务器的源
+    "http://127.0.0.1:5172",
     "http://localhost/",
     # 在生产环境中，应替换为你的前端域名
     "http://frontend",
@@ -164,5 +168,7 @@ print("到这")
 with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:
     log_config = json.load(f)
     
+
+celery = create_celery()
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="127.0.0.1", port=8080,  log_level="debug",reload=False, reload_excludes=exclude_patterns, workers=4)
+    uvicorn.run("main:app", host="127.0.0.1", port=8081,  log_level="debug",reload=True, reload_excludes=exclude_patterns, workers=4)

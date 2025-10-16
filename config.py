@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     REDIS_HOST: str
     REDIS_PORT: int
     REDIS_PASSWORD: str = None
+    REDIS_DB : int
     REDIS_AVAILABLE: bool
 
     OPTIMIZE_API_URL: str
@@ -44,7 +45,7 @@ class Settings(BaseSettings):
     DIFY_LISTEN_PORT: int
     DIFY_TARGET_HOST: str
     DIFY_TARGET_PORT: int
-    model_config = SettingsConfigDict(env_file=".env.prod")
+    model_config = SettingsConfigDict(env_file=".env.dev")
 
     # class Settings:
     #     env_file = ".env"
