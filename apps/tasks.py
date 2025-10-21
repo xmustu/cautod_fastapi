@@ -4,7 +4,7 @@ from datetime import datetime
 import os
 import time 
 
-
+import sys
 import uuid
 import redis as redis_sync
 import redis.asyncio as redis_async
@@ -141,9 +141,9 @@ async def create_task(
     try:
         # 创建目录（包括所有必要的父目录）
         task_dir.mkdir(parents=True, exist_ok=True)
-        print(f"成功创建任务目录: {task_dir}")
+        #print(f"成功创建任务目录: {task_dir}")
     except Exception as e:
-        print(f"创建任务目录失败: {e}")
+        print(f"创建任务目录失败: {e}", file=sys.stderr)
         raise
     # 移除在此处保存消息的逻辑，该职责已转移到前端
     # message = Message(
@@ -163,15 +163,15 @@ async def execute_task(
     current_user: User = Depends(get_current_active_user)
 ):
     try:
-        print("request.file_url: ", request.file_url)
+        # print("request.file_url: ", request.file_url)
         redis_client = global_request.app.state.redis
         # 使用同步 redis 连接用于队列操作 / pubsub（Celery worker 与 SSE generator 共用）
-        r_async = redis_sync.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=settings.REDIS_DB, decode_responses=True)
+        r_async = redis_async.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=settings.REDIS_DB, decode_responses=True)
 
         """
         根据 task_type 执行一个已创建的任务。
         """
-        print(f"--- Received request to execute task: {request.task_id} ({request.task_type}) ---")
+        # print(f"--- Received request to execute task: {request.task_id} ({request.task_type}) ---")
         # 数据库事务
         task = await Tasks.get_or_none(
                 task_id=request.task_id, 
@@ -185,7 +185,7 @@ async def execute_task(
                     detail="Task not found or does not belong to the current user/conversation."
                 )
 
-            print("通过验证了吗")
+            #print("通过验证了吗")
             # if task.status != "pending":
             #     raise HTTPException(
             #         status_code=status.HTTP_400_BAD_REQUEST,
@@ -211,12 +211,12 @@ async def execute_task(
             # 更新任务状态为“处理中”
 
                 task.status = "queued"
-                print("通过optimize验证了吗")
+                #print("通过optimize验证了吗")
             else:
                 task.status = "running"
             await task.save()
 
-        print("出事务")
+        # print("出事务")
         # --- 新增：在执行任务前，保存用户的消息 ---
         if request.query:
             user_message = Message(
@@ -248,7 +248,7 @@ async def execute_task(
         
         combinde_query = request.query #+ f". 我希望生成的.py 和 .step 文件的命名为：{file_name}" 
         # + r'\n请注意文件保存路径为"C:\Users\dell\Projects\CAutoD\cautod_fastapi\files\mcp_out"'
-        print("combinde_query: ", combinde_query)
+        # print("combinde_query: ", combinde_query)
         # 根据任务类型路由到不同的处理逻辑
         
         if request.task_type == "geometry":
@@ -325,9 +325,9 @@ async def execute_task(
             queue_key = "optimize_queue"
             try:
                 await r_async.rpush(queue_key, task.task_id)
-                print(f"Pushed task {task.task_id} to optimize_queue")
+                #print(f"Pushed task {task.task_id} to optimize_queue")
             except Exception as e:
-                print("Failed to push task to optimize_queue:", e)
+                print("Failed to push task to optimize_queue:", e, file=sys.stderr)
             try:
             # 提交 Celery 任务（异步）
                 celery.send_task("optimize:celery_optimize_task", args=[celery_payload], kwargs={})
@@ -336,27 +336,27 @@ async def execute_task(
                     # 返回一个 SSE 流：先推送队列位置更新，并订阅 worker 发布的 channel
             async def sse_generator():
                 try:
-                    pubsub = r_async.pubsub(ignore_subscribe_messages=True)
+                    pubsub =  r_async.pubsub(ignore_subscribe_messages=True)
                     channel = f"optimize_events:{task.task_id}"
-                    pubsub.subscribe(channel)
+                    await pubsub.subscribe(channel)
                     last_pos = None
-                    print("Subscribed to channel:", channel)
+                    # print("Subscribed to channel:", channel)
                 except Exception as e:
-                    print("Failed to subscribe to optimize_events channel:", e)
+                    print("Failed to subscribe to optimize_events channel:", e, file=sys.stderr)
                     yield f"event: error\ndata: {json.dumps({'error': 'Failed to subscribe to optimize_events channel'})}\n\n"
                     return
                 try:
                     while True:
                         # 1) 检查队列位置
                         try:
-                            queue = r_async.lrange(queue_key, 0, -1)
+                            queue = await r_async.lrange(queue_key, 0, -1)
                             if str(task.task_id) in queue:
                                 pos = queue.index(str(task.task_id)) + 1  # 1-based position
                             else:
                                 pos = 0  # 已被 worker 移除 => 已经开始或已结束
-                            print("Current queue:", queue, "Position:", pos)
+                            # print("Current queue:", queue, "Position:", pos)
                         except Exception as e:
-                            print("Failed to yield queue_check error SSE:", e)
+                            print("Failed to yield parse_pubsub_message error SSE:", e, file=sys.stderr)
                             pos = -1
 
                         if pos != last_pos:
@@ -364,11 +364,10 @@ async def execute_task(
                             last_pos = pos
                             yield f"event: queue_update\ndata: {msg}\n\n"
                             
-                            
-
+                        
                         # 2) 订阅 channel（非阻塞读取）
-                        message = pubsub.get_message(timeout=1)
-                        print("pubsub message:", message)
+                        message = await pubsub.get_message(timeout=1)
+                        # print("pubsub message:", message)
                         if message and "data" in message:
                             data = message["data"]
                             # data 本身是 string（Celery worker 将发布完整的 SSE chunk）
@@ -379,16 +378,16 @@ async def execute_task(
                                 if payload.get("event") in ("finished", "failed", "message_end"):
                                     break
                             except Exception as e:
-                                print("Failed to yield parse_pubsub_message error SSE:", e)
+                                print("Failed to yield parse_pubsub_message error SSE:", e, file=sys.stderr)
                         # 小延迟避免忙循环
-                        # await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.3)
                     # 最后确保取消订阅
                 finally:
                     try:
-                        pubsub.unsubscribe(channel)
-                        pubsub.close()
+                        await pubsub.unsubscribe(channel)
+                        await pubsub.close()
                     except Exception as e:
-                        print("pubsub cleanup error:", e)
+                        print("pubsub cleanup error:", e, file=sys.stderr)
 
             return StreamingResponse(sse_generator(), media_type="text/event-stream")
 
@@ -403,7 +402,7 @@ async def execute_task(
                 content=assistant_message["content"],
                 timestamp=datetime.now()
             )
-            print("结果回复信息: ", message)
+            # print("结果回复信息: ", message)
             await save_message_to_redis(
                         user_id=current_user.user_id,
                         task_id=request.task_id,
@@ -436,8 +435,8 @@ async def submit_optimization_params(
     """
     接收前端提交的优化参数，并打印。
     """
-    print(f"--- Received optimization parameters for conversation {request_data.conversation_id}, task {request_data.task_id} ---")
-    print("Received Params:", request_data.params)
+    # print(f"--- Received optimization parameters for conversation {request_data.conversation_id}, task {request_data.task_id} ---")
+    # print("Received Params:", request_data.params)
 
     # 这里可以添加验证逻辑，例如验证 task_id 和 conversation_id 是否属于当前用户
     task = await Tasks.get_or_none(
@@ -473,7 +472,7 @@ async def submit_optimization_params(
         # 模拟成功响应
         return {"message": "Parameters received successfully and printed to console."}
     except Exception as e:
-        print("Error sending parameters to algorithm service:", e)
+        print("Error sending parameters to algorithm service:", e, file=sys.stderr)
 
 
 @router.get("/optimize/progress/{task_id}")
@@ -534,7 +533,7 @@ async def optimize_progress_sse(task_id: str):
                     last_pos = pos
 
                 # 小延迟避免忙循环
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.2)
         finally:
             try:
                 pubsub.unsubscribe(channel)
@@ -550,15 +549,29 @@ async def get_optimize_queue_length():
     获取当前优化任务队列的长度。
     """
     r = redis_sync.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-    queue_key = "optimize_queue"
-    running_key = "optimize_running"
     try:
-        queue = r.lrange(queue_key, 0, -1)
-        # running = r.lrange(running_key, 0, -1) or []
-        return {"length": len(queue), "running": 1}
+        i = celery.control.inspect()
+
+        # 关键修改：检查 i 是否为 None
+        if i is not None:
+            # i.active() 和 i.reserved() 可能会返回 None，需要进一步检查
+            active_info = i.active()
+            reserved_info = i.reserved()
+            
+            active = sum(len(v) for v in active_info.values()) if active_info else 0
+            reserved = sum(len(v) for v in reserved_info.values()) if reserved_info else 0
+        else:
+            # Celery Worker 不可达
+            active = 0
+            reserved = 0
+
+        queued = r.llen('optimize')
+
+        # 这里的 reserved + queued 是等待任务的总数
+        return {"length": reserved + queued, "running": active}
     except Exception as e:
-        print("Failed to fetch optimize queue:", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch optimize queue."
-        )
+        # 即使添加了 None 检查，如果 Redis 连接失败等，仍然可能到这里
+        print("Failed to fetch optimize queue:", e, file=sys.stderr) 
+        # 建议返回一个默认值，而不是 500 错误，以保持前端轮询不中断
+        return {"length": -1, "running": 0} # 返回 -1 让前端显示获取失败
+        # raise HTTPException(...) # 注释掉 raise HTTPException

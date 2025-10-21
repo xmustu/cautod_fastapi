@@ -12,7 +12,7 @@ async def mark_all_done():
     await Tortoise.generate_schemas()
 
     rows = await Tasks.filter(
-        status__in=["pending", "running"]
+        status__in=["pending", "running","queued"]
     ).update(status="done")
     print(f"已更新 {rows} 条任务状态为 done")
 

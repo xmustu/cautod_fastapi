@@ -376,7 +376,9 @@ async def optimize_stream_generator(
                 task.status = "failed"
                 await task.save()
                 print(f"Error during optimization task execution: {e}")
-
+                await algorithm_client.close()  # 关闭算法客户端连接
+                image_monitor_task.cancel()
+                log_monitor_task.cancel()
                 assistant_message.content += f"\n\n**任务执行出错**: {e}"
                 assistant_message.status = "failed"
                 assistant_message.timestamp = datetime.now()
