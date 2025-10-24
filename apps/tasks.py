@@ -316,9 +316,9 @@ async def execute_task(
                 "file_url": request.file_url or "",
                 "query": request.query or "",
                 # 将 redis 连接信息序列化传递（不要传 redis 对象本身）
-                "redis_host": os.getenv("REDIS_HOST", "host.docker.internal"),
-                "redis_port": int(os.getenv("REDIS_PORT", 6379)),
-                "redis_db": int(os.getenv("REDIS_DB", 0)),
+                "redis_host": os.getenv("REDIS_HOST", settings.REDIS_HOST),
+                "redis_port": int(os.getenv("REDIS_PORT", settings.REDIS_PORT)),
+                "redis_db": int(os.getenv("REDIS_DB", settings.REDIS_DB)),
             }
 
             # 将 task_id 推入优化队列（fifo）
@@ -452,7 +452,7 @@ async def submit_optimization_params(
     
     # 查询指定task_id的优化结果
     optimization_result = await OptimizationResults.filter(task_id=request_data.task_id).first()
-    model_path = os.path.dirname(optimization_result.optimized_cad_file_path)
+    model_path = Path(os.path.dirname(optimization_result.optimized_cad_file_path))
     # algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
     # # 检查算法服务健康状态
     # health_status = await algorithm_client.check_health()
@@ -464,10 +464,12 @@ async def submit_optimization_params(
     try:
 
         #response = await algorithm_client.send_parameter(model_path, request_data.params)
-        with open(rf"{model_path}\parameters.txt", "w", encoding="utf-8") as f:
-                json.dump(request_data.params, f)
-        control_file = os.path.join(model_path, "control.txt")
+        params_file = model_path / "parameters.txt"
+        with open(params_file, "w", encoding="utf-8") as f:
+            json.dump(request_data.params, f)
+        control_file = model_path / "control.txt"
         write_key(control_file, "command", "8")
+        print(f"Optimization parameters saved to {params_file} and control command set to 8 in {control_file}.")
         #await algorithm_client.close  ()  # 关闭客户端连接
         # 模拟成功响应
         return {"message": "Parameters received successfully and printed to console."}
@@ -482,7 +484,7 @@ async def optimize_progress_sse(task_id: str):
         import json
         import redis as redis_sync
 
-        r = redis_sync.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        r = redis_sync.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=settings.REDIS_DB, decode_responses=True)
         channel = f"optimize_events:{task_id}"
         pubsub = r.pubsub(ignore_subscribe_messages=True)
         pubsub.subscribe(channel)
@@ -548,7 +550,7 @@ async def get_optimize_queue_length():
     """
     获取当前优化任务队列的长度。
     """
-    r = redis_sync.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    r = redis_sync.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=settings.REDIS_DB, decode_responses=True)
     try:
         i = celery.control.inspect()
 

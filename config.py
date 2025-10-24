@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     DIFY_LISTEN_PORT: int
     DIFY_TARGET_HOST: str
     DIFY_TARGET_PORT: int
-    model_config = SettingsConfigDict(env_file=".env.dev")
+    model_config = SettingsConfigDict(env_file=".env.prod")
 
     # class Settings:
     #     env_file = ".env"

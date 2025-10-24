@@ -43,9 +43,11 @@ WORKDIR /app
 COPY requirements.txt .
 
 # 安装Python依赖到本地目录（排除已安装的cadquery）
-RUN pip install --user --no-cache-dir -r requirements.txt
+# 移除 --user
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 生产阶段
+
 FROM python:3.10-slim
 
 # 设置工作目录
@@ -63,11 +65,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 从构建阶段复制已安装的Python包
-COPY --from=builder /root/.local /root/.local
+# COPY --from=builder /root/.local /root/.local
+# 从系统安装路径复制，而不是 /root/.local
+COPY --from=builder /usr/local /usr/local
 
 # 确保脚本可以找到已安装的包
-ENV PATH=/root/.local/bin:$PATH
-
+# ENV PATH=/root/.local/bin:$PATH
+ENV PATH=/usr/local/bin:$PATH
 # 复制项目文件
 COPY . .
 
@@ -76,6 +80,11 @@ RUN mkdir -p files logs migrations && \
     touch logs/app.log logs/access.log && \
     chmod 755 logs && \
     chmod 644 logs/*.log
+
+
+# 新增：创建非 root 用户并切换
+# RUN useradd -m appuser
+# USER appuser
 
 # 暴露端口
 EXPOSE 8080

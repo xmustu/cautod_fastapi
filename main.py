@@ -1,3 +1,4 @@
+
 import json
 import os
 from contextlib import asynccontextmanager
@@ -40,7 +41,7 @@ async def lifespan(app: FastAPI):
     
     #连接数据库
     app.state.redis = await redis_connect()  # 连接到 Redis 数据库
-
+    print("redis")
 
     #获取动态配置
 
@@ -171,4 +172,4 @@ with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:
 
 celery = create_celery()
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="127.0.0.1", port=8081,  log_level="debug",reload=True, reload_excludes=exclude_patterns, workers=4)
+    uvicorn.run("main:app", host="127.0.0.1", port=8081,  log_level="debug",reload=False, reload_excludes=exclude_patterns, workers=4)
