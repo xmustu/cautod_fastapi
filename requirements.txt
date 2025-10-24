@@ -24,3 +24,4 @@ websockets
 watchfiles
 celery
 flower
+pytest

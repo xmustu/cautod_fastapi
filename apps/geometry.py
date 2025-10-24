@@ -150,7 +150,7 @@ async def geometry_stream_generator(
         # markdownsign ="```"
         # yield f'event: text_chunk\ndata: {SSETextChunk(text=markdownsign).model_dump_json()}\n\n'
         # 获取建议问题
-        suggested_questions = {"result": "success", "data": []} # await client.Next_Suggested_Questions()
+        suggested_questions = await client.Next_Suggested_Questions() # {"result": "success", "data": []}
 
 
 
