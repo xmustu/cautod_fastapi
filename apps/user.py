@@ -16,7 +16,7 @@ from core.authentication import  User
 from core.authentication import get_current_active_user
 from config import settings
 
-from apps.schemas import AuthConfig
+from apps.schemas.user import AuthConfig, UserRole, UserResponse, UserRoleUpdateRequest
 
 
 user = APIRouter()
@@ -26,13 +26,12 @@ templates = Jinja2Templates(directory="templates")
 
 
 
-
-@user.get("/me", summary="获取当前用户信息")
+@user.get("/me", summary="获取当前用户信息", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_active_user)):
     # current_user 是从 token 中解码出的 Pydantic 模型
     # 我们用它来从数据库中获取最新的、完整的用户信息
     user_info = await Users.get(email=current_user.email).values(
-        "user_id", "email", "created_at","username"
+        "user_id", "email", "created_at", "username", "role"
     )
     if not user_info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -146,12 +145,13 @@ async def register_get(request: Request):
     return {"content":"register page"}
     #return templates.TemplateResponse("auth/register.html", {"request": request})
 
-@user.post("/register", summary="用户注册")
+@user.post("/register", summary="用户注册", response_model=UserResponse)
 async def register(
     #user_id: int = Form(),
     username: str = Form(),
     email: str = Form(),
-    pwd: str = Form()
+    pwd: str = Form(),
+    role: UserRole = Form(UserRole.USER)  # 默认为普通用户
 ):
     # 检查用户ID或邮箱是否已存在
     #if await Users.filter(user_id=user_id).exists():
@@ -167,16 +167,56 @@ async def register(
             username=username,
             email=email,
             password_hash=hashed_password,
+            role=role  # 添加角色字段
         )
         # 返回JSON响应而不是重定向
-        return {"status": "success", "user_id": user.user_id, "email": user.email}
+        return {
+            "user_id": user.user_id, 
+            "username": user.username,
+            "email": user.email, 
+            "role": user.role,
+            "created_at": user.created_at
+        }
     except Exception as e:
         # 捕获其他潜在的数据库错误
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@user.get("/{user_id}")
+@user.get("/{user_id}", summary="获取指定用户信息", response_model=UserResponse)
 async def get_user(user_id: int):
-    user = await Users.get(user_id=user_id).values("user_id", "email", "created_at")
+    user = await Users.get(user_id=user_id).values("user_id", "email", "created_at", "username", "role")
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
+
+
+@user.put("/update-role", summary="更新用户角色（仅管理员）")
+async def update_user_role(
+    request: UserRoleUpdateRequest,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    更新用户角色（仅管理员可操作）
+    """
+    # 验证当前用户是否为管理员
+    admin_user = await Users.get(email=current_user.email)
+    if admin_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="权限不足，仅管理员可以修改用户角色"
+        )
+    
+    # 查找要更新的用户
+    target_user = await Users.get_or_none(user_id=request.user_id)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="目标用户不存在")
+    
+    # 更新用户角色
+    target_user.role = request.role
+    await target_user.save()
+    
+    return {
+        "status": "success",
+        "message": f"用户 {target_user.username} 的角色已更新为 {request.role.value}",
+        "user_id": target_user.user_id,
+        "new_role": request.role.value
+    }

@@ -57,6 +57,36 @@ class PendingTaskResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class TaskResponse(BaseModel):
+    """任务列表响应模型"""
+    task_id: int
+    conversation_id: str
+    user_id: int
+    task_type: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TaskListRequest(BaseModel):
+    """获取任务列表的请求体模型"""
+    task_type: Optional[str] = Field(None, description="任务类型筛选 (e.g., 'geometry', 'retrieval', 'optimize')")
+    status: Optional[str] = Field(None, description="任务状态筛选 (e.g., 'pending', 'running', 'completed', 'failed')")
+    limit: int = Field(50, ge=1, le=100, description="返回数量限制，默认50，最大100")
+    offset: int = Field(0, ge=0, description="偏移量，用于分页")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "task_type": "geometry",
+                "status": "completed",
+                "limit": 20,
+                "offset": 0
+            }
+        }
+
 
 
 

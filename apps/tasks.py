@@ -17,7 +17,8 @@ from fastapi.responses import StreamingResponse
 from tortoise.transactions import in_transaction
 
 from core.authentication import get_current_active_user, User
-from database.models import Tasks, Conversations, GeometryResults, OptimizationResults
+from core.permissions import get_user_with_role
+from database.models import Tasks, Conversations, GeometryResults, OptimizationResults, UserRole
 from apps.chat import save_message_to_redis, save_or_update_message_in_redis
 from apps.geometry import  DifyClient
 from apps.geometry import geometry_stream_generator
@@ -33,6 +34,8 @@ from apps.schemas import (
     TaskCreateResponse,
     TaskExecuteRequest,
     PendingTaskResponse,
+    TaskResponse,
+    TaskListRequest,
 )
 from apps.schemas import (
     Message
@@ -72,6 +75,55 @@ router = APIRouter(
 
 
 # --- API 端点实现 ---
+
+@router.post("/list", response_model=List[TaskResponse], summary="获取任务列表")
+async def get_tasks(
+    request_data: TaskListRequest,
+    user_info: tuple = Depends(get_user_with_role)
+):
+    """
+    获取任务列表（支持筛选和分页）
+    
+    权限控制：
+    - 普通用户：只能看自己的任务
+    - 高级用户：只能看自己的任务（但可能有更详细信息）
+    - 管理员：可以看所有用户的任务
+    
+    请求体示例：
+    ```json
+    {
+        "task_type": "geometry",
+        "status": "completed",
+        "limit": 20,
+        "offset": 0
+    }
+    ```
+    
+    所有字段都是可选的：
+    - 不指定筛选条件则返回所有任务
+    - limit 默认 50，最大 100
+    - offset 默认 0，用于分页
+    """
+    current_user, role = user_info
+    
+    # 构建查询
+    if role == UserRole.ADMIN:
+        # 管理员可以看所有任务
+        tasks_query = Tasks.all()
+    else:
+        # 普通用户和高级用户只能看自己的任务
+        tasks_query = Tasks.filter(user_id=current_user.user_id)
+    
+    # 应用筛选条件
+    if request_data.task_type:
+        tasks_query = tasks_query.filter(task_type=request_data.task_type)
+    if request_data.status:
+        tasks_query = tasks_query.filter(status=request_data.status)
+    
+    # 分页和排序
+    tasks = await tasks_query.order_by("-created_at").offset(request_data.offset).limit(request_data.limit)
+    
+    return tasks
 
 @router.get("/pending", response_model=List[PendingTaskResponse], summary="获取所有待处理的任务")
 async def get_pending_tasks(

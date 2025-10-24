@@ -9,6 +9,7 @@ from database.models import *
 from core.hashing import Hasher
 from pydantic import BaseModel
 from jwt.exceptions import InvalidTokenError
+from typing import Optional
 
 
 SECRET_KEY = "2703d9889343165118045a6fae0d1f42b3ee721ae803063dbea52a36fe92ede8"
@@ -25,6 +26,7 @@ class User(BaseModel):
     user_id: int
     email: str
     created_at: datetime
+    role: Optional[str] = "user"  # 添加角色字段
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 
@@ -91,7 +93,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     return User(
         user_id=user_orm.user_id,
         email=user_orm.email,
-        created_at=user_orm.created_at
+        created_at=user_orm.created_at,
+        role=user_orm.role.value if hasattr(user_orm.role, 'value') else user_orm.role  # 添加角色字段
     )
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)):
