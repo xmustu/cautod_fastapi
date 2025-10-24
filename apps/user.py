@@ -150,8 +150,7 @@ async def register(
     #user_id: int = Form(),
     username: str = Form(),
     email: str = Form(),
-    pwd: str = Form(),
-    role: UserRole = Form(UserRole.USER)  # 默认为普通用户
+    pwd: str = Form()
 ):
     # 检查用户ID或邮箱是否已存在
     #if await Users.filter(user_id=user_id).exists():
@@ -167,16 +166,9 @@ async def register(
             username=username,
             email=email,
             password_hash=hashed_password,
-            role=role  # 添加角色字段
         )
         # 返回JSON响应而不是重定向
-        return {
-            "user_id": user.user_id, 
-            "username": user.username,
-            "email": user.email, 
-            "role": user.role,
-            "created_at": user.created_at
-        }
+        return {"status": "success", "user_id": user.user_id, "email": user.email}
     except Exception as e:
         # 捕获其他潜在的数据库错误
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
