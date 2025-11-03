@@ -5,7 +5,7 @@ from database.models import Tasks
 from apps.schemas import Message
 from core.authentication import User
 from datetime import datetime
-from apps.chat import  save_or_update_message_in_redis
+from apps.routes.chat import  save_or_update_message_in_redis
 from apps.schemas import (
     TaskExecuteRequest,
     GenerationMetadata,

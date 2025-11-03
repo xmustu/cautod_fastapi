@@ -16,7 +16,7 @@ from database.models import Conversations
 from core.authentication import get_current_active_user
 from core.authentication import User
 from database.models import Tasks
-from apps.chat import save_or_update_message_in_redis
+from apps.routes.chat import save_or_update_message_in_redis
 from database.models import Tasks, Conversations, GeometryResults
 
 
@@ -137,7 +137,7 @@ async def geometry_stream_generator(
 
             text_chunk_data = SSETextChunk(text=formatted_chunk)
             sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-            
+            # print("sse_chunk: ",sse_chunk)
             yield sse_chunk
             await save_or_update_message_in_redis(
                 user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,

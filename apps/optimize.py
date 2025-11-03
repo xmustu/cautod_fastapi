@@ -27,7 +27,7 @@ from core.authentication import authenticate
 from core.authentication import User
 from database.models import Tasks
 from database.models import OptimizationResults
-from apps.chat import  save_or_update_message_in_redis
+from apps.routes.chat import  save_or_update_message_in_redis
 from apps.schemas import Message
 from apps.schemas import (
     OptimizeRequest,
