@@ -1,5 +1,14 @@
 from pydantic_settings import BaseSettings,SettingsConfigDict
 
+from pydantic import (
+    AnyUrl,
+    BeforeValidator,
+    EmailStr,
+    HttpUrl,
+    PostgresDsn,
+    computed_field,
+    model_validator,
+)
 
 class Settings(BaseSettings):
     DEBUG_MODE: bool =False
@@ -17,6 +26,17 @@ class Settings(BaseSettings):
     MYSQL_DATABASE:str = "cautod"
 
     TEMPLATES_DIR:str ="/templates"
+
+    
+    # SMTP 邮件服务配置
+    SMTP_TLS: bool = True
+    SMTP_SSL: bool = False
+    SMTP_PORT: int = 587
+    SMTP_HOST: str | None = None
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    EMAILS_FROM_EMAIL: EmailStr | None = None
+    EMAILS_FROM_NAME: EmailStr | None = None
 
     GITHUB_CLIENT_ID: str
     GITHUB_CLIENT_SECRET: str

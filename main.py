@@ -4,24 +4,30 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 import uvicorn
 
-from apps.router import router
-from apps.user import user
+from apps.routes.router import router
+from apps.routes.user import user
 from apps.geometry import geometry
 from apps.optimize import optimize
-from apps.tasks import router as tasks_router
-from apps.chat import router as chat_router
+from apps.routes.tasks import router as tasks_router
+from apps.routes.chat import router as chat_router
+from apps.routes.login import router as login_router
+from apps.routes.admin import admin_router
 from core.middleware import count_time_middleware,FullRequestLoggerMiddleware
 
 from database.settings import TORTOISE_ORM_SQLITE, TORTOISE_ORM_MYSQL
 from database.sql import register_sql
 from database.redis import redis_connect
+from database.models import Users, UserRole
 from core.geometry import start_mcp, dify_api_port_forward
+from core.hashing import Hasher
+from core.authentication import create_token
 from cleanup_orphan_tasks import cleanup
 
 from config import settings
@@ -32,7 +38,53 @@ log_dir.mkdir(parents=True, exist_ok=True)  # 创建目录（若不存在）
 
 for name in ("app.log", "access.log"):
     (log_dir / name).touch(exist_ok=True)   # 创建空文件（若不存在）
-    
+
+
+async def init_admin_account():
+    """
+    初始化管理员账号
+    如果系统中不存在管理员账号，则创建默认管理员
+    """
+    try:
+        # 检查是否存在管理员账号
+        admin_exists = await Users.filter(role=UserRole.ADMIN).exists()
+        
+        if not admin_exists:
+            # 创建默认管理员账号
+            admin_email = "Z.F.Zhang@i4ai.org"
+            admin_username = "admin"
+            admin_password = "i4AIi4AI"
+            
+            # 检查邮箱是否已被使用（可能是其他角色）
+            existing_user = await Users.get_or_none(email=admin_email)
+            
+            if existing_user:
+                # 如果用户存在但不是管理员，升级为管理员
+                existing_user.role = UserRole.ADMIN
+                existing_user.username = admin_username
+                await existing_user.save()
+                print(f"✓ 已将用户 {admin_email} 升级为管理员")
+            else:
+                # 创建新的管理员账号
+                hashed_password = Hasher.get_password_hash(admin_password)
+                await Users.create(
+                    username=admin_username,
+                    email=admin_email,
+                    password_hash=hashed_password,
+                    role=UserRole.ADMIN
+                )
+                print(f"✓ 默认管理员账号已创建")
+                print(f"  邮箱: {admin_email}")
+                print(f"  用户名: {admin_username}")
+                print(f"  密码: {admin_password}")
+                print(f"  提示: 请在首次登录后修改密码！")
+        else:
+            print("✓ 管理员账号已存在")
+            
+    except Exception as e:
+        print(f"✗ 初始化管理员账号失败: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行的事件
@@ -42,6 +94,9 @@ async def lifespan(app: FastAPI):
     #连接数据库
     app.state.redis = await redis_connect()  # 连接到 Redis 数据库
     print("redis")
+
+    # 初始化管理员账号
+    await init_admin_account()
 
     #获取动态配置
 
@@ -105,7 +160,55 @@ exclude_patterns = [
 
 
 # Key: Pass lifespan to FastAPI
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    title="CAutoD API",
+    description="CAutoD 计算机辅助自动设计系统 API",
+    version="1.0.0",
+    swagger_ui_init_oauth={
+        "clientId": "swagger-ui",
+        "appName": "CAutoD API",
+        "usePkceWithAuthorizationCodeGrant": True,
+    }
+)
+
+# OAuth2 密码流配置 - 用于 Swagger UI 授权
+@app.post("/login", tags=["认证"], summary="Swagger UI OAuth2 登录")
+async def login_for_swagger(form_data: OAuth2PasswordRequestForm = Depends()):
+    """
+    OAuth2 密码流登录端点
+    用于 Swagger UI 的授权
+    
+    - **username**: 用户邮箱
+    - **password**: 用户密码
+    """
+    # 查找用户（支持邮箱或用户名登录）
+    user = await Users.get_or_none(email=form_data.username)
+    if not user:
+        user = await Users.get_or_none(username=form_data.username)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 验证密码
+    if not Hasher.verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 生成访问令牌
+    access_token = create_token(data={"sub": user.email})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
 
 # Mount the MCP server
 # app.mount("/analytics",mcp_app)
@@ -159,11 +262,13 @@ print("daozhe ")
 
 
 app.include_router(user, prefix="/api/user", tags=["用户部分", ])
+app.include_router(login_router, prefix="/api/auth", tags=["登录认证"])
 app.include_router(geometry, prefix="/api/geometry", tags=["几何建模", ])
 app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
 app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
 app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
+app.include_router(admin_router, prefix="/api") # 管理员路由
 print("到这")
 # 显式加载日志配置文件
 with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:

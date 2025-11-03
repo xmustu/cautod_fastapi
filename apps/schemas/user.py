@@ -40,6 +40,20 @@ class UserRoleUpdateRequest(BaseModel):
     user_id: int
     role: UserRole
 
+# 修改密码请求模型
+class PasswordChangeRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+# 删除指定用户请求模型（仅管理员可用）
+class UserDeleteRequest(BaseModel):
+    user_id: int
+
+# 更新用户名请求模型
+class UsernameUpdateRequest(BaseModel):
+    email: str
+    new_username: str
+
 class AuthConfig(BaseModel):
     client_id: str = settings.GITHUB_CLIENT_ID
     client_srecret: str = settings.GITHUB_CLIENT_SECRET

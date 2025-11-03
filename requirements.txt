@@ -25,3 +25,5 @@ watchfiles
 celery
 flower
 pytest
+emails  # 邮件发送库
+pytest-asyncio 

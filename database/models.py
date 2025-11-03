@@ -107,3 +107,19 @@ class OptimizationResults(Model):
     class Meta:
         table = "optimization_results"
         #indexes = [("idx_task_id", ["task_id"])]
+
+
+# 错误日志模型
+class ErrorLogs(Model):
+    error_id = fields.IntField(pk=True, auto_increment=True)
+    task_id = fields.IntField()
+    error_message = fields.TextField()
+    error_type = fields.CharField(max_length=100, null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    # 外部关系（逻辑关联）
+    task: ForeignKeyRelation[Tasks] = None  # 逻辑关联
+
+    class Meta:
+        table = "error_logs"
+        #indexes = [("idx_task_id", ["task_id"])]
