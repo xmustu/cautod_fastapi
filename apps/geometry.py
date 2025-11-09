@@ -156,7 +156,7 @@ async def geometry_stream_generator(
 
         # # 查询是否有建模结果
         # geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
-
+    
         
         # # 4. 流式发送预览图
         # if geometry_result:
@@ -181,7 +181,7 @@ async def geometry_stream_generator(
         #         await asyncio.sleep(0.1)
             
             #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"})
-
+        
         # 4. 发送包含完整元数据的结束消息
         geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
         if geometry_result:

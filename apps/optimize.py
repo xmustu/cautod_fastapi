@@ -382,10 +382,14 @@ async def optimize_stream_generator(
                 assistant_message.content += f"\n\n**任务执行出错**: {e}"
                 assistant_message.status = "failed"
                 assistant_message.timestamp = datetime.now()
-                await save_or_update_message_in_redis(
-                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                )
+                
+                try:
+                    await save_or_update_message_in_redis(
+                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    )
+                except Exception as redis_err:
+                    print(f"Error saving error message to Redis: {redis_err}")
 
                 error_data = json.dumps({"error": "An error occurred during task execution."})
                 yield f'event: error\ndata: {error_data}\n\n'

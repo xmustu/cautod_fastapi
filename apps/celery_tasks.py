@@ -58,10 +58,8 @@ def celery_optimize_task(self, payload):
 
 
         # 在异步上下文中创建并使用 async redis 客户端，所有操作都要 await
-        redis_host = payload.get("redis_host", os.getenv("REDIS_HOST", "127.0.0.1"))
-        # 临时避免 DNS 问题：在 Celery/任务中用 127.0.0.1 替代 localhost
-        if redis_host == "localhost":
-            redis_host = "127.0.0.1"
+        redis_host = payload.get("redis_host", os.getenv("REDIS_HOST", "redis"))
+        # 在Docker环境中使用服务名，本地开发时使用localhost
         redis_port = payload.get("redis_port", os.getenv("REDIS_PORT", 6379))
         redis_db = payload.get("redis_db", os.getenv("REDIS_DB", 0))
         

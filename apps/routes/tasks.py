@@ -400,21 +400,21 @@ async def execute_task(
                 try:
                     while True:
                         # 1) 检查队列位置
-                        try:
-                            queue = await r_async.lrange(queue_key, 0, -1)
-                            if str(task.task_id) in queue:
-                                pos = queue.index(str(task.task_id)) + 1  # 1-based position
-                            else:
-                                pos = 0  # 已被 worker 移除 => 已经开始或已结束
-                            # print("Current queue:", queue, "Position:", pos)
-                        except Exception as e:
-                            print("Failed to yield parse_pubsub_message error SSE:", e, file=sys.stderr)
-                            pos = -1
+                        # try:
+                        #     queue = await r_async.lrange(queue_key, 0, -1)
+                        #     if str(task.task_id) in queue:
+                        #         pos = queue.index(str(task.task_id)) + 1  # 1-based position
+                        #     else:
+                        #         pos = 0  # 已被 worker 移除 => 已经开始或已结束
+                        #     # print("Current queue:", queue, "Position:", pos)
+                        # except Exception as e:
+                        #     print("Failed to yield parse_pubsub_message error SSE:", e, file=sys.stderr)
+                        #     pos = -1
 
-                        if pos != last_pos:
-                            msg = json.dumps({"type": "queue_position", "position": pos})
-                            last_pos = pos
-                            yield f"event: queue_update\ndata: {msg}\n\n"
+                        # if pos != last_pos:
+                        #     msg = json.dumps({"type": "queue_position", "position": pos})
+                        #     last_pos = pos
+                        #     yield f"event: queue_update\ndata: {msg}\n\n"
                             
                         
                         # 2) 订阅 channel（非阻塞读取）
@@ -423,7 +423,9 @@ async def execute_task(
                         if message and "data" in message:
                             data = message["data"]
                             # data 本身是 string（Celery worker 将发布完整的 SSE chunk）
-                            yield f"{data}\n\n"
+                            print("Yielding SSE data:", data)
+                            if "started" not in data:  # 过滤掉订阅确认消息
+                                yield f"{data}\n\n"
                             # 如果 worker 发布结束信号，退出
                             try:
                                 payload = json.loads(data.replace("data: ", "") if data.startswith("data: ") else data)
