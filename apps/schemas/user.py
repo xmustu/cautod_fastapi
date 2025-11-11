@@ -1,9 +1,9 @@
-from pydantic import BaseModel
 from config import Settings
 from enum import Enum
 from datetime import datetime
 from typing import Optional
-
+from pydantic import BaseModel, EmailStr, Field, field_validator
+import re
 settings = Settings()
 
 # 用户角色枚举
@@ -12,12 +12,92 @@ class UserRole(str, Enum):
     PREMIUM = "premium"     # 高级用户
     ADMIN = "admin"         # 管理员
 
-# 用户注册请求模型
+# 改进的用户注册请求模型
 class UserRegisterRequest(BaseModel):
-    username: str
-    email: str
-    password: str
-    role: Optional[UserRole] = UserRole.USER  # 默认为普通用户
+    username: str = Field(
+        ..., 
+        min_length=3, 
+        max_length=50,
+        description="用户名,3-50个字符,支持字母、数字、下划线、中文"
+    )
+    email: EmailStr = Field(
+        ..., 
+        description="有效的邮箱地址"
+    )
+    password: str = Field(
+        ..., 
+        min_length=6, 
+        max_length=128,
+        description="密码,6-128个字符"
+    )
+    
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        """验证用户名格式"""
+        # 去除首尾空格
+        v = v.strip()
+        
+        # 检查长度
+        if len(v) < 3:
+            raise ValueError('用户名至少需要3个字符')
+        if len(v) > 50:
+            raise ValueError('用户名不能超过50个字符')
+        
+        # 检查格式:允许字母、数字、下划线、中文
+        if not re.match(r'^[\w\u4e00-\u9fa5]+$', v):
+            raise ValueError('用户名只能包含字母、数字、下划线和中文字符')
+        
+        # 不允许纯数字
+        if v.isdigit():
+            raise ValueError('用户名不能为纯数字')
+        
+        # 检查保留关键词
+        reserved_usernames = ['admin', 'root', 'system', 'test', 'guest', 'administrator']
+        if v.lower() in reserved_usernames:
+            raise ValueError('该用户名为保留名称,无法使用')
+        
+        return v
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        """验证密码强度"""
+        # 检查长度
+        if len(v) < 6:
+            raise ValueError('密码至少需要6个字符')
+        if len(v) > 128:
+            raise ValueError('密码不能超过128个字符')
+        
+        # # 检查是否包含大写字母
+        # if not re.search(r'[A-Z]', v):
+        #     raise ValueError('密码必须包含至少一个大写字母')
+        
+        # # 检查是否包含小写字母
+        # if not re.search(r'[a-z]', v):
+        #     raise ValueError('密码必须包含至少一个小写字母')
+        
+        # # 检查是否包含数字
+        # if not re.search(r'\d', v):
+        #     raise ValueError('密码必须包含至少一个数字')
+        
+        # # 检查是否包含特殊字符
+        # if not re.search(r'[!@#$%^&*()_+\-=\[\]{};:\'",.<>?/\\|`~]', v):
+        #     raise ValueError('密码必须包含至少一个特殊字符 (!@#$%^&*等)')
+        
+        # # 检查常见弱密码
+        # common_passwords = [
+        #     'password', 'Password123!', '12345678', 'qwerty', 'abc123',
+        #     'password1', 'Password1!', '123456789', 'Aa123456!', 'Admin123!'
+        # ]
+        # if v in common_passwords:
+        #     raise ValueError('密码过于简单,请使用更复杂的密码')
+        
+        # # 检查是否包含连续字符(如123, abc)
+        # if re.search(r'(012|123|234|345|456|567|678|789|abc|bcd|cde)', v.lower()):
+        #     raise ValueError('密码不应包含连续的字符序列')
+        
+        return v
 
 # 用户登录请求模型
 class UserLoginRequest(BaseModel):

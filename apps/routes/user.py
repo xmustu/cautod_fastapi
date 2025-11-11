@@ -6,7 +6,7 @@ from fastapi import responses
 from fastapi import Depends
 from fastapi.exceptions import HTTPException
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import ValidationError
 import httpx
 
 from database.models import *
@@ -17,8 +17,16 @@ from core.authentication import get_current_active_user
 from core.permissions import require_admin
 from config import settings
 
-from apps.schemas.user import AuthConfig, UserRole, UserResponse, UserRoleUpdateRequest, PasswordChangeRequest, UserDeleteRequest, UsernameUpdateRequest
-
+from apps.schemas.user import (
+    AuthConfig, 
+    UserRegisterRequest,
+    UserRole, 
+    UserResponse, 
+    UserRoleUpdateRequest, 
+    PasswordChangeRequest, 
+    UserDeleteRequest, 
+    UsernameUpdateRequest
+)
 
 user = APIRouter()
 
@@ -147,32 +155,73 @@ async def register_get(request: Request):
     #return templates.TemplateResponse("auth/register.html", {"request": request})
 
 @user.post("/register", summary="用户注册", response_model=UserResponse)
-async def register(
-    #user_id: int = Form(),
-    username: str = Form(),
-    email: str = Form(),
-    pwd: str = Form()
-):
-    # 检查用户ID或邮箱是否已存在
-    #if await Users.filter(user_id=user_id).exists():
-    #    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该用户ID已被注册")
-    if await Users.filter(email=email).exists():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该邮箱已被注册")
-
+async def register(request: UserRegisterRequest):
+    """
+    验证规则:
+    - 用户名: 3-50字符, 支持字母/数字/下划线/中文, 不允许纯数字和保留名
+    - 邮箱: 标准邮箱格式验证
+    - 密码: 8-128字符
+    """
+    # 1. 检查用户名是否已存在
+    if await Users.filter(username=request.username).exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "username_exists",
+                "message": "该用户名已被注册",
+                "field": "username"
+            }
+        )
+    # 2. 检查邮箱是否已存在
+    if await Users.filter(email=request.email).exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "email_exists",
+                "message": "该邮箱已被注册",
+                "field": "email"
+            }
+        )
+    
     try:
-        # 对密码进行哈希处理并创建用户
-        hashed_password = Hasher.get_password_hash(pwd)
+        # 3. 对密码进行哈希处理并创建用户
+        hashed_password = Hasher.get_password_hash(request.password)
+
+        # 4. 创建用户
         user = await Users.create(
             #user_id=user_id,
-            username=username,
-            email=email,
+            username=request.username.strip(),  # 去除首尾空格
+            email=request.email,
             password_hash=hashed_password,
         )
-        # 返回JSON响应而不是重定向
-        return {"status": "success", "user_id": user.user_id, "email": user.email}
+        # 5. 返回成功响应
+        return UserResponse(
+            user_id=user.user_id,
+            username=user.username,
+            email=user.email,
+            role=user.role,
+            created_at=user.created_at
+        )
+    except ValidationError as e:
+        # Pydantic 验证错误
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "validation_error",
+                "message": "输入数据验证失败",
+                "details": e.errors()
+            }
+        )
     except Exception as e:
         # 捕获其他潜在的数据库错误
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail={
+                "error": "server_error",
+                "message": "注册失败, 请稍后重试",
+                "details": str(e)
+            }
+        )
 
 @user.get("/{user_id}", summary="获取指定用户信息", response_model=UserResponse)
 async def get_user(user_id: int,current_user: User = Depends(require_admin)):

@@ -28,7 +28,7 @@ from database.models import Users, UserRole
 from core.geometry import start_mcp, dify_api_port_forward
 from core.hashing import Hasher
 from core.authentication import create_token
-from cleanup_orphan_tasks import cleanup
+
 
 from config import settings
 from configs.celery_utils import create_celery

@@ -11,7 +11,7 @@ class UserRole(str, Enum):
 # 用户模型
 class Users(Model):
     user_id = fields.IntField(pk=True, auto_increment=True)
-    username = fields.CharField(max_length=255, default="user")
+    username = fields.CharField(max_length=255, unique=True)
     email = fields.CharField(max_length=255, unique=True)
     password_hash = fields.CharField(max_length=255)
     role = fields.CharEnumField(UserRole, default=UserRole.USER, description="用户角色：user-普通用户, premium-高级用户, admin-管理员")
