@@ -11,6 +11,8 @@ from pydantic import (
 )
 
 class Settings(BaseSettings):
+    PROJECT_NAME: str
+    FRONTEND_HOST: str
     DEBUG_MODE: bool =False
 
     
@@ -29,14 +31,18 @@ class Settings(BaseSettings):
 
     
     # SMTP 邮件服务配置
-    SMTP_TLS: bool = True
-    SMTP_SSL: bool = False
-    SMTP_PORT: int = 587
+    EMAILS_ENABLED: bool = False
     SMTP_HOST: str | None = None
     SMTP_USER: str | None = None
     SMTP_PASSWORD: str | None = None
     EMAILS_FROM_EMAIL: EmailStr | None = None
-    EMAILS_FROM_NAME: EmailStr | None = None
+    EMAILS_FROM_NAME: str | None = None
+    SMTP_TLS: bool = False
+    SMTP_SSL: bool = True
+    SMTP_PORT: int = 465
+    EMAIL_RESET_TOKEN_EXPIRE_HOURS: int
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int
+    EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = 10
 
     GITHUB_CLIENT_ID: str
     GITHUB_CLIENT_SECRET: str

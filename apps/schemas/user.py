@@ -134,6 +134,48 @@ class UsernameUpdateRequest(BaseModel):
     email: str
     new_username: str
 
+
+class Message(BaseModel):
+    """通用消息响应"""
+    message: str
+
+
+class NewPassword(BaseModel):
+    """重置密码请求"""
+    token: str
+    new_password: str
+
+
+class PasswordRecoveryRequest(BaseModel):
+    """密码找回请求"""
+    email: EmailStr
+
+
+class EmailVerificationRequest(BaseModel):
+    """邮箱验证请求"""
+    token: str
+
+
+class EmailVerificationCodeRequest(BaseModel):
+    """发送邮箱验证码请求"""
+    email: EmailStr
+
+
+class EmailRegisterRequest(UserRegisterRequest):
+    """邮箱验证码注册请求"""
+    verification_code: str | None = None
+
+    @field_validator("verification_code")
+    @classmethod
+    def validate_verification_code(cls, value: str | None) -> str | None:
+        if value in (None, ""):
+            return None
+        if not value.isdigit():
+            raise ValueError("验证码必须为数字")
+        if len(value) not in (4, 6):
+            raise ValueError("验证码长度必须为4或6位")
+        return value
+
 class AuthConfig(BaseModel):
     client_id: str = settings.GITHUB_CLIENT_ID
     client_srecret: str = settings.GITHUB_CLIENT_SECRET

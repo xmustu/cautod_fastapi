@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter
 from fastapi import Request
 from fastapi import Form
@@ -6,7 +8,7 @@ from fastapi import responses
 from fastapi import Depends
 from fastapi.exceptions import HTTPException
 from fastapi.templating import Jinja2Templates
-from pydantic import ValidationError
+from pydantic import EmailStr, ValidationError
 import httpx
 
 from database.models import *
@@ -16,6 +18,17 @@ from core.authentication import  User
 from core.authentication import get_current_active_user
 from core.permissions import require_admin
 from config import settings
+from core.email_utils import (
+    create_email_verification_code,
+    generate_new_account_email,
+    generate_password_reset_token,
+    generate_reset_password_email,
+    generate_verification_email,
+    send_email,
+    verify_email_verification_code,
+    verify_password_reset_token,
+    clear_email_verification_code,
+)
 
 from apps.schemas.user import (
     AuthConfig, 
@@ -25,7 +38,12 @@ from apps.schemas.user import (
     UserRoleUpdateRequest, 
     PasswordChangeRequest, 
     UserDeleteRequest, 
-    UsernameUpdateRequest
+    UsernameUpdateRequest,
+    PasswordRecoveryRequest,
+    NewPassword,
+    Message,
+    EmailVerificationCodeRequest,
+    EmailRegisterRequest,
 )
 
 user = APIRouter()
@@ -65,6 +83,116 @@ async def login(request: Request,
     
     access_token = create_token(data={"sub": user.email})
     return {"status":"success", "access_token":access_token}
+
+
+# ============================================
+# 密码找回相关路由
+# ============================================
+
+@user.post(
+    "/password-recovery",
+    response_model=Message,
+    summary="请求密码找回",
+)
+async def recover_password(request: PasswordRecoveryRequest) -> Message:
+    """
+    密码找回流程
+
+    - 如果邮箱存在则发送密码重置邮件
+    - 如果邮箱不存在返回通用消息，避免被用来枚举邮箱
+    """
+    user = await Users.get_or_none(email=request.email)
+
+    if not user:
+        logging.warning(
+            "Password recovery requested for non-existent email: %s",
+            request.email,
+        )
+        return Message(message="If the email exists, a password recovery email has been sent")
+
+    password_reset_token = generate_password_reset_token(email=user.email)
+
+    email_data = generate_reset_password_email(
+        email_to=user.email,
+        email=user.email,
+        token=password_reset_token,
+    )
+
+    send_email(
+        email_to=user.email,
+        subject=email_data.subject,
+        html_content=email_data.html_content,
+    )
+
+    return Message(message="Password recovery email sent")
+
+
+@user.post(
+    "/reset-password",
+    response_model=Message,
+    summary="重置密码",
+)
+async def reset_password(body: NewPassword) -> Message:
+    """
+    使用邮件中的 token 重置密码
+
+    - 验证 token
+    - 更新数据库中的密码
+    """
+    email = verify_password_reset_token(token=body.token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired token",
+        )
+
+    user = await Users.get_or_none(email=email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The user with this email does not exist in the system.",
+        )
+
+    hashed_password = Hasher.get_password_hash(body.new_password)
+    user.password_hash = hashed_password
+    await user.save()
+
+    return Message(message="Password updated successfully")
+
+
+@user.post(
+    "/password-recovery-html/{email}",
+    response_model=Message,
+    summary="发送密码找回邮件",
+)
+async def send_password_recovery_email(email: EmailStr) -> Message:
+    """
+    根据邮箱发送密码重置邮件，供用户通过邮件链接重置密码。
+    """
+    user = await Users.get_or_none(email=email)
+
+    if not user:
+        logging.warning(
+            "Password recovery requested for non-existent email: %s",
+            email,
+        )
+        # 保持幂等性，防止泄露邮箱是否存在
+        return Message(message="If the email exists, a password recovery email has been sent")
+
+    password_reset_token = generate_password_reset_token(email=user.email)
+    email_data = generate_reset_password_email(
+        email_to=user.email,
+        email=user.email,
+        token=password_reset_token,
+    )
+
+    send_email(
+        email_to=user.email,
+        subject=email_data.subject,
+        html_content=email_data.html_content,
+    )
+
+    return Message(message="Password recovery email sent")
 
 @user.get("/auth/github", summary="GitHub OAuth2 登录")
 async def github_login():
@@ -222,6 +350,118 @@ async def register(request: UserRegisterRequest):
                 "details": str(e)
             }
         )
+
+
+@user.post(
+    "/register/email/send-code",
+    response_model=Message,
+    summary="发送注册邮箱验证码",
+)
+async def send_registration_verification_email(
+    request: EmailVerificationCodeRequest,
+) -> Message:
+    """
+    发送注册验证码到指定邮箱，用于后续验证。
+    """
+    if await Users.filter(email=request.email).exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
+        )
+
+    if not settings.EMAILS_ENABLED:
+        return Message(message="Email verification disabled, no code sent")
+
+    verification_code = create_email_verification_code(email=request.email)
+    email_data = generate_verification_email(
+        email_to=request.email,
+        code=verification_code,
+    )
+
+    send_email(
+        email_to=request.email,
+        subject=email_data.subject,
+        html_content=email_data.html_content,
+    )
+
+    return Message(message="Verification email sent")
+
+
+@user.post(
+    "/register/email",
+    response_model=Message,
+    status_code=status.HTTP_201_CREATED,
+    summary="邮箱验证码注册",
+)
+async def register_user_with_email(request: EmailRegisterRequest) -> Message:
+    """
+    通过邮箱验证码完成注册，并发送欢迎邮件。
+    """
+    username = request.username.strip()
+
+    if await Users.filter(username=username).exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered",
+        )
+
+    if await Users.filter(email=request.email).exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
+        )
+
+    if settings.EMAILS_ENABLED:
+        if not request.verification_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Verification code is required",
+            )
+        if not verify_email_verification_code(
+            request.email,
+            request.verification_code,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification code",
+            )
+        clear_email_verification_code(request.email)
+
+    hashed_password = Hasher.get_password_hash(request.password)
+
+    try:
+        user = await Users.create(
+            username=username,
+            email=request.email,
+            password_hash=hashed_password,
+        )
+    except Exception as exc:  # pragma: no cover - 数据库异常
+        logging.exception("Failed to create user for email registration")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user",
+        ) from exc
+
+    try:
+        email_data = generate_new_account_email(
+            email_to=user.email,
+            username=user.username,
+            password=request.password,
+        )
+        send_email(
+            email_to=user.email,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except Exception as exc:  # pragma: no cover - 邮件发送异常
+        logging.exception("Failed to send registration email, rolling back user creation")
+        await user.delete()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send registration email",
+        ) from exc
+
+    return Message(message="User registered and welcome email sent")
 
 @user.get("/{user_id}", summary="获取指定用户信息", response_model=UserResponse)
 async def get_user(user_id: int,current_user: User = Depends(require_admin)):

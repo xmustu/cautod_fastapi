@@ -13,6 +13,13 @@ from jwt.exceptions import InvalidTokenError
 from jinja2 import Template
 
 from core.authentication import SECRET_KEY, ALGORITHM
+from core.email_verification_store import (
+    clear_code as clear_email_verification_code,
+    generate_verification_code,
+    get_email_by_code,
+    save_code as store_email_verification_code,
+    verify_code as verify_email_verification_code,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -223,65 +230,42 @@ def verify_password_reset_token(token: str) -> str | None:
         return None
 
 
-def generate_email_verification_token(email: str) -> str:
+def create_email_verification_code(email: str) -> str:
     """
-    生成邮箱验证 token
-    
-    Args:
-        email: 用户邮箱
-    
-    Returns:
-        JWT token
+    生成邮箱验证码并存储
     """
     from config import settings
-    delta = timedelta(hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
-    now = datetime.now(timezone.utc)
-    expires = now + delta
-    exp = expires.timestamp()
-    encoded_jwt = jwt.encode(
-        {"exp": exp, "nbf": now, "sub": email, "type": "email_verification"},
-        SECRET_KEY,
-        algorithm=ALGORITHM,
-    )
-    return encoded_jwt
+
+    code = generate_verification_code()
+    ttl_seconds = settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES * 60
+    store_email_verification_code(email=email, code=code, ttl_seconds=ttl_seconds)
+    return code
+
+
+def generate_email_verification_token(email: str) -> str:
+    """兼容旧接口，返回验证码"""
+    return create_email_verification_code(email)
 
 
 def verify_email_verification_token(token: str) -> str | None:
-    """
-    验证邮箱验证 token
-    
-    Args:
-        token: JWT token
-    
-    Returns:
-        如果有效返回邮箱，否则返回 None
-    """
-    try:
-        decoded_token = jwt.decode(
-            token, SECRET_KEY, algorithms=[ALGORITHM]
-        )
-        if decoded_token.get("type") == "email_verification":
-            return str(decoded_token["sub"])
-        return None
-    except InvalidTokenError:
-        return None
+    """兼容旧接口，通过验证码反查邮箱"""
+    return get_email_by_code(token)
 
 
 def generate_verification_email(
     email_to: str,
-    token: str
+    code: str
 ) -> EmailData:
     """生成邮箱验证邮件"""
     from config import settings
     subject = f"{settings.PROJECT_NAME} - Verify your email address"
-    link = f"{settings.FRONTEND_HOST}/verify-email?token={token}"
     html_content = render_email_template(
         template_name="verify_email.html",
         context={
             "project_name": settings.PROJECT_NAME,
             "email": email_to,
-            "valid_hours": settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS,
-            "link": link,
+            "code": code,
+            "valid_minutes": settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES,
         },
     )
     return EmailData(html_content=html_content, subject=subject)
