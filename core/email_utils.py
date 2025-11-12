@@ -167,6 +167,23 @@ def generate_reset_password_email(
     return EmailData(html_content=html_content, subject=subject)
 
 
+def generate_reset_password_code_email(
+    email_to: str,
+    code: str,
+) -> EmailData:
+    from config import settings
+    subject = f"{settings.PROJECT_NAME} - Password reset code"
+    html_content = render_email_template(
+        template_name="reset_password_code.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "code": code,
+            "valid_minutes": settings.EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
 def generate_new_account_email(
     email_to: str, 
     username: str, 

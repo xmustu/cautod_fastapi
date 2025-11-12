@@ -176,6 +176,29 @@ class EmailRegisterRequest(UserRegisterRequest):
             raise ValueError("验证码长度必须为4或6位")
         return value
 
+
+class PasswordResetWithCodeRequest(BaseModel):
+    """验证码密码重置请求"""
+    email: EmailStr
+    verification_code: str
+    new_password: str
+
+    @field_validator("verification_code")
+    @classmethod
+    def validate_reset_code(cls, value: str) -> str:
+        if not value or not value.isdigit() or len(value) not in (4, 6):
+            raise ValueError("验证码需为4或6位数字")
+        return value
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if len(value) < 6:
+            raise ValueError("密码至少需要6个字符")
+        if len(value) > 128:
+            raise ValueError("密码不能超过128个字符")
+        return value
+
 class AuthConfig(BaseModel):
     client_id: str = settings.GITHUB_CLIENT_ID
     client_srecret: str = settings.GITHUB_CLIENT_SECRET

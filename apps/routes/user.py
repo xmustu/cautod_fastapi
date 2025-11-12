@@ -19,15 +19,16 @@ from core.authentication import get_current_active_user
 from core.permissions import require_admin
 from config import settings
 from core.email_utils import (
+    clear_email_verification_code,
     create_email_verification_code,
     generate_new_account_email,
     generate_password_reset_token,
+    generate_reset_password_code_email,
     generate_reset_password_email,
     generate_verification_email,
     send_email,
     verify_email_verification_code,
     verify_password_reset_token,
-    clear_email_verification_code,
 )
 
 from apps.schemas.user import (
@@ -44,6 +45,7 @@ from apps.schemas.user import (
     Message,
     EmailVerificationCodeRequest,
     EmailRegisterRequest,
+    PasswordResetWithCodeRequest,
 )
 
 user = APIRouter()
@@ -89,64 +91,109 @@ async def login(request: Request,
 # 密码找回相关路由
 # ============================================
 
+# @user.post(
+#     "/password-recovery-email",
+#     response_model=Message,
+#     summary="请求密码找回",
+# )
+# async def recover_password(request: PasswordRecoveryRequest) -> Message:
+#     """
+#     密码找回流程
+
+#     - 如果邮箱存在则发送密码重置邮件
+#     - 如果邮箱不存在返回通用消息，避免被用来枚举邮箱
+#     """
+#     user = await Users.get_or_none(email=request.email)
+
+#     if not user:
+#         logging.warning(
+#             "Password recovery requested for non-existent email: %s",
+#             request.email,
+#         )
+#         return Message(message="If the email exists, a password recovery email has been sent")
+
+#     if settings.EMAILS_ENABLED:
+#         password_reset_code = create_email_verification_code(email=user.email)
+#         email_data = generate_reset_password_code_email(
+#             email_to=user.email,
+#             code=password_reset_code,
+#         )
+
+#         send_email(
+#             email_to=user.email,
+#             subject=email_data.subject,
+#             html_content=email_data.html_content,
+#         )
+#         return Message(message="Password recovery email sent")
+
+#     password_reset_token = generate_password_reset_token(email=user.email)
+#     email_data = generate_reset_password_email(
+#         email_to=user.email,
+#         email=user.email,
+#         token=password_reset_token,
+#     )
+
+#     send_email(
+#         email_to=user.email,
+#         subject=email_data.subject,
+#         html_content=email_data.html_content,
+#     )
+
+#     return Message(message="Password recovery email sent")
+
+
+# @user.post(
+#     "/reset-password",
+#     response_model=Message,
+#     summary="重置密码",
+# )
+# async def reset_password(body: NewPassword) -> Message:
+#     """
+#     使用邮件中的 token 重置密码
+
+#     - 验证 token
+#     - 更新数据库中的密码
+#     """
+#     email = verify_password_reset_token(token=body.token)
+#     if not email:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid or expired token",
+#         )
+
+#     user = await Users.get_or_none(email=email)
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="The user with this email does not exist in the system.",
+#         )
+
+#     hashed_password = Hasher.get_password_hash(body.new_password)
+#     user.password_hash = hashed_password
+#     await user.save()
+
+#     return Message(message="Password updated successfully")
+
+
 @user.post(
-    "/password-recovery",
+    "/reset-password/code",
     response_model=Message,
-    summary="请求密码找回",
+    summary="验证码重置密码",
 )
-async def recover_password(request: PasswordRecoveryRequest) -> Message:
-    """
-    密码找回流程
-
-    - 如果邮箱存在则发送密码重置邮件
-    - 如果邮箱不存在返回通用消息，避免被用来枚举邮箱
-    """
-    user = await Users.get_or_none(email=request.email)
-
-    if not user:
-        logging.warning(
-            "Password recovery requested for non-existent email: %s",
-            request.email,
-        )
-        return Message(message="If the email exists, a password recovery email has been sent")
-
-    password_reset_token = generate_password_reset_token(email=user.email)
-
-    email_data = generate_reset_password_email(
-        email_to=user.email,
-        email=user.email,
-        token=password_reset_token,
-    )
-
-    send_email(
-        email_to=user.email,
-        subject=email_data.subject,
-        html_content=email_data.html_content,
-    )
-
-    return Message(message="Password recovery email sent")
-
-
-@user.post(
-    "/reset-password",
-    response_model=Message,
-    summary="重置密码",
-)
-async def reset_password(body: NewPassword) -> Message:
-    """
-    使用邮件中的 token 重置密码
-
-    - 验证 token
-    - 更新数据库中的密码
-    """
-    email = verify_password_reset_token(token=body.token)
-    if not email:
+async def reset_password_with_code(body: PasswordResetWithCodeRequest) -> Message:
+    if not settings.EMAILS_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired token",
+            detail="Email verification not enabled",
         )
 
-    user = await Users.get_or_none(email=email)
+    if not verify_email_verification_code(body.email, body.verification_code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code",
+        )
+
+    user = await Users.get_or_none(email=body.email)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -156,43 +203,41 @@ async def reset_password(body: NewPassword) -> Message:
     hashed_password = Hasher.get_password_hash(body.new_password)
     user.password_hash = hashed_password
     await user.save()
+    clear_email_verification_code(body.email)
 
     return Message(message="Password updated successfully")
 
-
 @user.post(
-    "/password-recovery-html/{email}",
+    "/password-recovery/code",
     response_model=Message,
-    summary="发送密码找回邮件",
+    summary="发送密码重置验证码",
 )
-async def send_password_recovery_email(email: EmailStr) -> Message:
+async def send_password_reset_code(request: PasswordRecoveryRequest) -> Message:
     """
-    根据邮箱发送密码重置邮件，供用户通过邮件链接重置密码。
+    发送密码重置验证码
     """
-    user = await Users.get_or_none(email=email)
+    user = await Users.get_or_none(email=request.email)
 
     if not user:
         logging.warning(
-            "Password recovery requested for non-existent email: %s",
-            email,
+            "Password reset code requested for non-existent email: %s",
+            request.email,
         )
-        # 保持幂等性，防止泄露邮箱是否存在
-        return Message(message="If the email exists, a password recovery email has been sent")
+        return Message(message="If the email exists, a reset code has been sent")
 
-    password_reset_token = generate_password_reset_token(email=user.email)
-    email_data = generate_reset_password_email(
-        email_to=user.email,
-        email=user.email,
-        token=password_reset_token,
+    reset_code = create_email_verification_code(email=request.email)
+    email_data = generate_reset_password_code_email(
+        email_to=request.email,
+        code=reset_code,
     )
 
     send_email(
-        email_to=user.email,
+        email_to=request.email,
         subject=email_data.subject,
         html_content=email_data.html_content,
     )
 
-    return Message(message="Password recovery email sent")
+    return Message(message="Reset code sent")
 
 @user.get("/auth/github", summary="GitHub OAuth2 登录")
 async def github_login():
