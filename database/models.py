@@ -1,12 +1,20 @@
 from tortoise import fields, Model
 from tortoise.fields.relational import ForeignKeyRelation
+from enum import Enum
+
+# 用户角色枚举
+class UserRole(str, Enum):
+    USER = "user"           # 普通用户
+    PREMIUM = "premium"     # 高级用户
+    ADMIN = "admin"         # 管理员
 
 # 用户模型
 class Users(Model):
     user_id = fields.IntField(pk=True, auto_increment=True)
-    username = fields.CharField(max_length=255, default="user")
+    username = fields.CharField(max_length=255, unique=True)
     email = fields.CharField(max_length=255, unique=True)
     password_hash = fields.CharField(max_length=255)
+    role = fields.CharEnumField(UserRole, default=UserRole.USER, description="用户角色：user-普通用户, premium-高级用户, admin-管理员")
     created_at = fields.DatetimeField(auto_now_add=True)
     #is_activate = fields.BooleanField(default=True)
     #role_id = fields.ForeignKeyField('models.Role', related_name='users',description="用户角色")
@@ -98,4 +106,20 @@ class OptimizationResults(Model):
 
     class Meta:
         table = "optimization_results"
+        #indexes = [("idx_task_id", ["task_id"])]
+
+
+# 错误日志模型
+class ErrorLogs(Model):
+    error_id = fields.IntField(pk=True, auto_increment=True)
+    task_id = fields.IntField()
+    error_message = fields.TextField()
+    error_type = fields.CharField(max_length=100, null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    # 外部关系（逻辑关联）
+    task: ForeignKeyRelation[Tasks] = None  # 逻辑关联
+
+    class Meta:
+        table = "error_logs"
         #indexes = [("idx_task_id", ["task_id"])]

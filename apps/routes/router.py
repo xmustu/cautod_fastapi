@@ -18,9 +18,10 @@ from pathlib import Path
 
 from core.authentication import authenticate
 from core.authentication import get_current_active_user, User
+from core.permissions import PermissionChecker
 from database.models import *
 
-from apps.chat import get_message_key, get_user_task_key
+from apps.routes.chat import get_message_key, get_user_task_key
 
 from config import settings
 from apps.schemas import FileRequest
@@ -54,7 +55,8 @@ async def save_file(file, path: Optional[str] = None, conversation_id: int = Non
     res = await file.read()
     #hash_name = hashlib.md5(file.filename.encode()).hexdigest()[:16]
     #file_name = f"{hash_name}.{file.filename.rsplit('.', 1)[-1]}"
-    full_file = f"{path}\{file.filename}"
+    # full_file = f"{path}\{file.filename}"
+    full_file = str(Path(path) / file.filename)
     with open(full_file, "wb") as f:
         f.write(res)
     await file.close()
@@ -208,6 +210,13 @@ async def download_file(
         # 构建目标目录路径：上一级目录/files/会话ID
         task_dir = base_dir / str(request.conversation_id) / str(request.task_id)
         file = task_dir / request.file_name
+        # 💥 最小修复点：增加文件存在性检查 💥
+        if not file.is_file():
+            print(f"File not found at expected path: {file}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"文件未找到：{request.file_name}"
+            )
         # 动态推断 MIME 类型
         media_type, _ = mimetypes.guess_type(file)
         print(f"Guessed MIME type for {request.file_name}: {media_type}") # Debug log
@@ -233,32 +242,102 @@ async def download_file(
         "/result_status/{task_id}",
         #tags=["Optimization"],
         summary="获取任务状态")
-async def get_task_status(task_id: str, #authorization : str = Form()):
-                          current_user: User = Depends(get_current_active_user)
+async def get_task_status(
+    task_id: str,
+    current_user: User = Depends(get_current_active_user)
 ):
-    # 验证授权
-    #authenticate(authorization)
-    status = await Tasks.get(task_id=task_id)
-    return status
+    """
+    获取任务状态
+    - 普通用户：只能查看自己的任务状态
+    - 管理员：可以查看任何任务的状态
+    """
+    # 检查用户是否为管理员
+    is_admin = await PermissionChecker.is_admin(current_user.email)
+    
+    # 获取任务
+    task = await Tasks.get_or_none(task_id=task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务不存在"
+        )
+    
+    # 权限验证：普通用户只能查看自己的任务
+    if not is_admin and task.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您没有权限查看此任务"
+        )
+    
+    return task
 
 
 @router.post("/conversation/{conversation_id}", summary="获取单个会话", response_model=ConversationOut)
-async def get_conversation(request: Request, conversation_id: str, #authorization : str = Form()):
-                           current_user: User = Depends(get_current_active_user)
+async def get_conversation(
+    request: Request,
+    conversation_id: str,
+    current_user: User = Depends(get_current_active_user)
 ):
-    # 验证授权
-    #await authenticate(authorization)
+    """
+    获取单个会话
+    - 普通用户：只能查看自己的会话
+    - 管理员：可以查看任何用户的会话
+    """
+    # 检查用户是否为管理员
+    is_admin = await PermissionChecker.is_admin(current_user.email)
+    
     # 获取会话并预加载相关的任务
-    conver = await Conversations.get(conversation_id=conversation_id).prefetch_related("tasks")
-    return conver
+    conversation = await Conversations.get_or_none(
+        conversation_id=conversation_id
+    ).prefetch_related("tasks")
+    
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="会话不存在"
+        )
+    
+    # 权限验证：普通用户只能查看自己的会话
+    if not is_admin and conversation.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您没有权限查看此会话"
+        )
+    
+    return conversation
 
 @router.post("/conversation_all/{user_id}", summary="获取全部会话")
-async def get_all_conversations(request: Request, #user_id: str, authorization : str = Form()):
-                                current_user: User = Depends(get_current_active_user)
+async def get_all_conversations(
+    request: Request,
+    user_id: str,
+    current_user: User = Depends(get_current_active_user)
 ):
-    # 验证授权
-    #await authenticate(authorization)
-    conversations = await Conversations.filter(user_id=current_user.user_id).all()
+    """
+    获取全部会话
+    - 普通用户：只能查看自己的会话（忽略路径中的user_id参数）
+    - 管理员：可以查看指定user_id的会话，或查看所有会话（user_id='all'）
+    
+    注意：为保持向后兼容，保留了user_id路径参数，但普通用户会被强制只能查看自己的会话
+    """
+    # 检查用户是否为管理员
+    is_admin = await PermissionChecker.is_admin(current_user.email)
+    
+    if is_admin:
+        # 管理员可以查看指定用户的会话，如果user_id为'all'或空则查看所有会话
+        if user_id and user_id != 'all':
+            try:
+                conversations = await Conversations.filter(user_id=int(user_id)).all()
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="无效的用户ID"
+                )
+        else:
+            conversations = await Conversations.all()
+    else:
+        # 普通用户只能查看自己的会话
+        conversations = await Conversations.filter(user_id=current_user.user_id).all()
+    
     return conversations
 
 @router.delete("/conversation/{conversation_id}", summary="删除会话及其所有关联数据")
@@ -272,37 +351,52 @@ async def delete_conversation(
     - 会话本身
     - 该会话下的所有任务
     - 每个任务在 Redis 中的对话历史
+    
+    权限控制：
+    - 普通用户：只能删除自己的会话
+    - 管理员：可以删除任何用户的会话
     """
     redis_client = request.app.state.redis
+    
+    # 检查用户是否为管理员
+    is_admin = await PermissionChecker.is_admin(current_user.email)
 
     # 1. 查找会话
-    conversation = await Conversations.get_or_none(
-        conversation_id=conversation_id, user_id=current_user.user_id
-    )
+    conversation = await Conversations.get_or_none(conversation_id=conversation_id)
 
     if not conversation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found or does not belong to the current user."
+            detail="会话不存在"
+        )
+    
+    # 2. 权限验证：普通用户只能删除自己的会话
+    if not is_admin and conversation.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您没有权限删除此会话"
         )
 
-    # 2. 查找并删除关联的任务及其 Redis 历史
+    # 3. 查找并删除关联的任务及其 Redis 历史
     associated_tasks = await Tasks.filter(conversation_id=conversation_id)
     if redis_client:
-        user_task_key = get_user_task_key(current_user.user_id)
+        # 使用会话所属用户的ID（可能是当前用户或其他用户）
+        conversation_owner_id = conversation.user_id
+        user_task_key = get_user_task_key(conversation_owner_id)
+        
         for task in associated_tasks:
             task_id_str = str(task.task_id)
-            message_key = get_message_key(current_user.user_id, task_id_str)
+            message_key = get_message_key(conversation_owner_id, task_id_str)
             # 从用户任务哈希中删除任务
             await redis_client.hdel(user_task_key, task_id_str)
             # 删除任务的消息列表
             await redis_client.delete(message_key)
 
-    # 3. 明确删除所有关联的任务
+    # 4. 明确删除所有关联的任务
     for task in associated_tasks:
         await task.delete()
 
-    # 4. 最后删除会话
+    # 5. 最后删除会话
     await conversation.delete()
     
     return {"message": "会话及所有关联数据已成功删除"}

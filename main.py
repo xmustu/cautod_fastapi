@@ -1,34 +1,90 @@
+
 import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 import uvicorn
 
-from apps.router import router
-from apps.user import user
+from apps.routes.router import router
+from apps.routes.user import user
 from apps.geometry import geometry
 from apps.optimize import optimize
-from apps.tasks import router as tasks_router
-from apps.chat import router as chat_router
+from apps.routes.tasks import router as tasks_router
+from apps.routes.chat import router as chat_router
+from apps.routes.login import router as login_router
+from apps.routes.admin import admin_router
 from core.middleware import count_time_middleware,FullRequestLoggerMiddleware
 
 from database.settings import TORTOISE_ORM_SQLITE, TORTOISE_ORM_MYSQL
 from database.sql import register_sql
 from database.redis import redis_connect
+from database.models import Users, UserRole
 from core.geometry import start_mcp, dify_api_port_forward
-from api.mcp_server import mcp_cadquery
+from core.hashing import Hasher
+from core.authentication import create_token
+
+
 from config import settings
+from configs.celery_utils import create_celery
+
 log_dir = Path("./logs")
 log_dir.mkdir(parents=True, exist_ok=True)  # 创建目录（若不存在）
 
 for name in ("app.log", "access.log"):
     (log_dir / name).touch(exist_ok=True)   # 创建空文件（若不存在）
-    
+
+
+async def init_admin_account():
+    """
+    初始化管理员账号
+    如果系统中不存在管理员账号，则创建默认管理员
+    """
+    try:
+        # 检查是否存在管理员账号
+        admin_exists = await Users.filter(role=UserRole.ADMIN).exists()
+        
+        if not admin_exists:
+            # 创建默认管理员账号
+            admin_email = "Z.F.Zhang@i4ai.org"
+            admin_username = "admin"
+            admin_password = "i4AIi4AI"
+            
+            # 检查邮箱是否已被使用（可能是其他角色）
+            existing_user = await Users.get_or_none(email=admin_email)
+            
+            if existing_user:
+                # 如果用户存在但不是管理员，升级为管理员
+                existing_user.role = UserRole.ADMIN
+                existing_user.username = admin_username
+                await existing_user.save()
+                print(f"✓ 已将用户 {admin_email} 升级为管理员")
+            else:
+                # 创建新的管理员账号
+                hashed_password = Hasher.get_password_hash(admin_password)
+                await Users.create(
+                    username=admin_username,
+                    email=admin_email,
+                    password_hash=hashed_password,
+                    role=UserRole.ADMIN
+                )
+                print(f"✓ 默认管理员账号已创建")
+                print(f"  邮箱: {admin_email}")
+                print(f"  用户名: {admin_username}")
+                print(f"  密码: {admin_password}")
+                print(f"  提示: 请在首次登录后修改密码！")
+        else:
+            print("✓ 管理员账号已存在")
+            
+    except Exception as e:
+        print(f"✗ 初始化管理员账号失败: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行的事件
@@ -37,12 +93,17 @@ async def lifespan(app: FastAPI):
     
     #连接数据库
     app.state.redis = await redis_connect()  # 连接到 Redis 数据库
+    print("redis")
+
+    # 初始化管理员账号
+    await init_admin_account()
+
     #获取动态配置
 
     #启用第三方的服务
     #mcp_process = await start_mcp()
     #print("执行过了吗")
-    dify_api_process = await dify_api_port_forward()
+    # dify_api_process = await dify_api_port_forward()
 
     #其他
     yield
@@ -58,12 +119,12 @@ async def lifespan(app: FastAPI):
     #print("stdout: ", mcp_process.stdout)
     #print("stderr: ", mcp_process.stderr)
     #mcp_process.terminate()
-    dify_api_process.terminate()
+    # dify_api_process.terminate()
     #其他
     
 
 
-app = FastAPI()
+# app = FastAPI()
 
 
 
@@ -85,24 +146,72 @@ exclude_patterns = [
 
 
 
-# gengerate the ASGI app for MCP
-mcp_app = mcp_cadquery(app)
+# # gengerate the ASGI app for MCP
+# mcp_app = mcp_cadquery(app)
 
 
-# Combine both lifespans
-@asynccontextmanager
-async def combined_lifespan(app: FastAPI):
-    # Run both lifespans
-    async with lifespan(app):
-        async with mcp_app.lifespan(app):
-            yield
+# # Combine both lifespans
+# @asynccontextmanager
+# async def combined_lifespan(app: FastAPI):
+#     # Run both lifespans
+#     async with lifespan(app):
+#         async with mcp_app.lifespan(app):
+#             yield
 
 
 # Key: Pass lifespan to FastAPI
-app = FastAPI(lifespan=combined_lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    title="CAutoD API",
+    description="CAutoD 计算机辅助自动设计系统 API",
+    version="1.0.0",
+    swagger_ui_init_oauth={
+        "clientId": "swagger-ui",
+        "appName": "CAutoD API",
+        "usePkceWithAuthorizationCodeGrant": True,
+    }
+)
+
+# OAuth2 密码流配置 - 用于 Swagger UI 授权
+@app.post("/login", tags=["认证"], summary="Swagger UI OAuth2 登录")
+async def login_for_swagger(form_data: OAuth2PasswordRequestForm = Depends()):
+    """
+    OAuth2 密码流登录端点
+    用于 Swagger UI 的授权
+    
+    - **username**: 用户邮箱
+    - **password**: 用户密码
+    """
+    # 查找用户（支持邮箱或用户名登录）
+    user = await Users.get_or_none(email=form_data.username)
+    if not user:
+        user = await Users.get_or_none(username=form_data.username)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 验证密码
+    if not Hasher.verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 生成访问令牌
+    access_token = create_token(data={"sub": user.email})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
 
 # Mount the MCP server
-app.mount("/analytics",mcp_app)
+# app.mount("/analytics",mcp_app)
 
 # --- 新增：挂载静态文件目录 ---
 # 创建 files 目录（如果不存在）
@@ -111,8 +220,14 @@ app.mount(settings.STATIC_URL, StaticFiles(directory=settings.STATIC_DIR), name=
 
 # CORS 中间件配置
 origins = [
+    "http://localhost:5174",  # 允许 Vite 开发服务器的源
+    "http://127.0.0.1:5174",
     "http://localhost:5173",  # 允许 Vite 开发服务器的源
     "http://127.0.0.1:5173", # 有时浏览器会使用 127.0.0.1
+    "http://localhost:5172",  # 允许 Vite 开发服务器的源
+    "http://127.0.0.1:5172",
+    "http://localhost:5171",  # 允许 Vite 开发服务器的源
+    "http://127.0.0.1:5171",
     "http://localhost/",
     # 在生产环境中，应替换为你的前端域名
     "http://frontend",
@@ -126,7 +241,7 @@ origins = [
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,#allow_origins=origins,
+    allow_origins=["*"],#allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -135,22 +250,35 @@ app.add_middleware(
 # count_time_middleware(app)  # 计时中间件
 
 # app.add_middleware(FullRequestLoggerMiddleware)
+print(settings.SQLMODE)
+if settings.SQLMODE == "MYSQL":
+    config = TORTOISE_ORM_MYSQL
+else:
+    config = TORTOISE_ORM_SQLITE
 register_tortoise(
     app,
-    config=TORTOISE_ORM_SQLITE,  # 使用 MySQL 配置
+    config=config,  # 使用 MySQL 配置
     generate_schemas=True,  # 在应用启动时自动创建数据库表
     add_exception_handlers=True,
 )
+print("daozhe ")
+
+
+
 app.include_router(user, prefix="/api/user", tags=["用户部分", ])
+app.include_router(login_router, prefix="/api/auth", tags=["登录认证"])
 app.include_router(geometry, prefix="/api/geometry", tags=["几何建模", ])
 app.include_router(optimize, prefix="/api/optimize", tags=["设计优化", ])
 app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
 app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
-
+app.include_router(admin_router, prefix="/api") # 管理员路由
+print("到这")
 # 显式加载日志配置文件
 with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:
     log_config = json.load(f)
     
+
+celery = create_celery()
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="127.0.0.1", log_config=log_config, port=8080,  log_level="debug",reload=True, reload_excludes=exclude_patterns)
+    uvicorn.run("main:app", host="127.0.0.1", port=8081,  log_level="debug",reload=False, reload_excludes=exclude_patterns, workers=1)

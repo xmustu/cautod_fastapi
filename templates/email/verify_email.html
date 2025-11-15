@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email - {{ project_name }}</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px;">
+        <h1 style="color: #2c3e50; margin-top: 0;">{{ project_name }}</h1>
+        <h2 style="color: #27ae60;">Verify Your Email Address</h2>
+        
+        <p>Hello,</p>
+        
+        <p>Thank you for registering with {{ project_name }}!</p>
+        
+        <p>Your verification code for <strong>{{ email }}</strong> is:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <div style="
+                display: inline-block;
+                padding: 16px 32px;
+                background-color: #27ae60;
+                color: white;
+                font-size: 32px;
+                letter-spacing: 8px;
+                border-radius: 8px;
+                font-weight: bold;
+            ">{{ code }}</div>
+        </div>
+        
+        <p>Please enter this code on the registration page to complete your account setup.</p>
+        
+        <p><strong>⏰ The code will expire in {{ valid_minutes }} minutes.</strong></p>
+        
+        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+        
+        <p style="font-size: 0.9em; color: #7f8c8d;">
+            <strong>Didn't create an account?</strong><br>
+            If you didn't create an account with {{ project_name }}, you can safely ignore this email.
+        </p>
+        
+        <p style="font-size: 0.8em; color: #95a5a6; margin-top: 30px;">
+            This is an automated email from {{ project_name }}. Please do not reply to this email.
+        </p>
+    </div>
+</body>
+</html>

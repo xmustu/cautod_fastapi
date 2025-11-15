@@ -27,7 +27,7 @@ from core.authentication import authenticate
 from core.authentication import User
 from database.models import Tasks
 from database.models import OptimizationResults
-from apps.chat import  save_or_update_message_in_redis
+from apps.routes.chat import  save_or_update_message_in_redis
 from apps.schemas import Message
 from apps.schemas import (
     OptimizeRequest,
@@ -291,7 +291,8 @@ async def optimize_stream_generator(
                 await algorithm_client.close()  # 关闭算法客户端连接
 
                 # 9. 采用新的图片流式方案并更新Redis
-                base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
+                #base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
+                base_dir = settings.STATIC_URL if settings.STATIC_URL else "/files"
                 mock_images = [
                     {"path": rf"{base_dir}/{request.conversation_id}/{request.task_id}/convergence_curve.png", "alt": "收敛曲线"},
                     {"path": rf"{base_dir}/{request.conversation_id}/{request.task_id}/parameter_distribution.png", "alt": "参数分布图"}
@@ -375,14 +376,20 @@ async def optimize_stream_generator(
                 task.status = "failed"
                 await task.save()
                 print(f"Error during optimization task execution: {e}")
-
+                await algorithm_client.close()  # 关闭算法客户端连接
+                image_monitor_task.cancel()
+                log_monitor_task.cancel()
                 assistant_message.content += f"\n\n**任务执行出错**: {e}"
                 assistant_message.status = "failed"
                 assistant_message.timestamp = datetime.now()
-                await save_or_update_message_in_redis(
-                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
-                )
+                
+                try:
+                    await save_or_update_message_in_redis(
+                        user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                        conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    )
+                except Exception as redis_err:
+                    print(f"Error saving error message to Redis: {redis_err}")
 
                 error_data = json.dumps({"error": "An error occurred during task execution."})
                 yield f'event: error\ndata: {error_data}\n\n'

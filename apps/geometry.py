@@ -16,7 +16,7 @@ from database.models import Conversations
 from core.authentication import get_current_active_user
 from core.authentication import User
 from database.models import Tasks
-from apps.chat import save_or_update_message_in_redis
+from apps.routes.chat import save_or_update_message_in_redis
 from database.models import Tasks, Conversations, GeometryResults
 
 
@@ -137,7 +137,7 @@ async def geometry_stream_generator(
 
             text_chunk_data = SSETextChunk(text=formatted_chunk)
             sse_chunk = f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
-            
+            # print("sse_chunk: ",sse_chunk)
             yield sse_chunk
             await save_or_update_message_in_redis(
                 user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
@@ -150,13 +150,13 @@ async def geometry_stream_generator(
         # markdownsign ="```"
         # yield f'event: text_chunk\ndata: {SSETextChunk(text=markdownsign).model_dump_json()}\n\n'
         # 获取建议问题
-        suggested_questions = await client.Next_Suggested_Questions()
+        suggested_questions = await client.Next_Suggested_Questions() # {"result": "success", "data": []}
 
 
 
         # # 查询是否有建模结果
         # geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
-
+    
         
         # # 4. 流式发送预览图
         # if geometry_result:
@@ -181,7 +181,7 @@ async def geometry_stream_generator(
         #         await asyncio.sleep(0.1)
             
             #image_parts_for_redis.append({"type": "image", "imageUrl": image_url, "fileName": imgage_file_name, "altText": "几何建模预览图"})
-
+        
         # 4. 发送包含完整元数据的结束消息
         geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
         if geometry_result:
@@ -197,7 +197,8 @@ async def geometry_stream_generator(
             image_file_name = "Oblique_View.png"
 
             # 定义路径片段
-            base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
+            # base_dir = Path(settings.STATIC_URL) if settings.STATIC_URL else Path("/files")
+            base_dir = settings.STATIC_URL if settings.STATIC_URL else "/files"
             # 用 "/" 拼接路径
             image_url = rf"{base_dir}/{request.conversation_id}/{request.task_id}/{image_file_name}"
             #image_url = os.path.join("/files", str(request.conversation_id), str(task.task_id), imgage_file_name)

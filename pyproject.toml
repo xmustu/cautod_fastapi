@@ -1,4 +1,4 @@
 [tool.aerich]
-tortoise_orm = "settings.TORTOISE_ORM_sqlite"
+tortoise_orm = "database.settings.TORTOISE_ORM_MYSQL"
 location = "./migrations"
 src_folder = "./."

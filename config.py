@@ -1,7 +1,18 @@
 from pydantic_settings import BaseSettings,SettingsConfigDict
 
+from pydantic import (
+    AnyUrl,
+    BeforeValidator,
+    EmailStr,
+    HttpUrl,
+    PostgresDsn,
+    computed_field,
+    model_validator,
+)
 
 class Settings(BaseSettings):
+    PROJECT_NAME: str
+    FRONTEND_HOST: str
     DEBUG_MODE: bool =False
 
     
@@ -17,6 +28,21 @@ class Settings(BaseSettings):
     MYSQL_DATABASE:str = "cautod"
 
     TEMPLATES_DIR:str ="/templates"
+
+    
+    # SMTP 邮件服务配置
+    EMAILS_ENABLED: bool = False
+    SMTP_HOST: str | None = None
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    EMAILS_FROM_EMAIL: EmailStr | None = None
+    EMAILS_FROM_NAME: str | None = None
+    SMTP_TLS: bool = False
+    SMTP_SSL: bool = True
+    SMTP_PORT: int = 465
+    EMAIL_RESET_TOKEN_EXPIRE_HOURS: int
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int
+    EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES: int = 10
 
     GITHUB_CLIENT_ID: str
     GITHUB_CLIENT_SECRET: str
@@ -35,6 +61,7 @@ class Settings(BaseSettings):
     REDIS_HOST: str
     REDIS_PORT: int
     REDIS_PASSWORD: str = None
+    REDIS_DB : int
     REDIS_AVAILABLE: bool
 
     OPTIMIZE_API_URL: str
@@ -44,7 +71,7 @@ class Settings(BaseSettings):
     DIFY_LISTEN_PORT: int
     DIFY_TARGET_HOST: str
     DIFY_TARGET_PORT: int
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env.dev")
 
     # class Settings:
     #     env_file = ".env"
