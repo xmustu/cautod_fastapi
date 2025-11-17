@@ -75,7 +75,12 @@ async def login(request: Request,
                 email: str = Form(),
                 password: str = Form()):
 
-    user = await Users.get(email=email)
+    identifier = email.strip()
+
+    # 允许使用邮箱或用户名登录：先按邮箱查找，不存在再按用户名查找
+    user = await Users.get_or_none(email=identifier)
+    if not user:
+        user = await Users.get_or_none(username=identifier)
 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
