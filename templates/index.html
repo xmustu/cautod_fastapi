@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>远程桌面控制 - 测试客户端</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            max-width: 1400px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc3545;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #28a745;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .screen-container {
+            position: relative;
+            border: 3px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        #remoteScreen {
+            width: 100%;
+            height: auto;
+            display: block;
+            cursor: crosshair;
+            image-rendering: crisp-edges;
+        }
+
+        .info-panel {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .info-panel h3 {
+            color: #495057;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #6c757d;
+        }
+
+        .info-value {
+            color: #212529;
+        }
+
+        .log-container {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-time {
+            color: #858585;
+            margin-right: 10px;
+        }
+
+        .log-info {
+            color: #4ec9b0;
+        }
+
+        .log-error {
+            color: #f48771;
+        }
+
+        .log-success {
+            color: #89d185;
+        }
+
+        .keyboard-hint {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .keyboard-hint h4 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .keyboard-hint ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .keyboard-hint li {
+            padding: 5px 0;
+            color: #856404;
+        }
+
+        .keyboard-hint kbd {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖥️ 远程桌面控制测试客户端</h1>
+        
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">未连接</span>
+            </div>
+            <div>
+                <span id="fpsCounter">FPS: 0</span>
+            </div>
+        </div>
+        
+        {% if not screen_grab_available %}
+        <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="color: #856404; margin-bottom: 10px;">⚠️ 屏幕抓取功能不可用</h3>
+            <pre style="color: #856404; white-space: pre-wrap; font-family: monospace; font-size: 12px;">{{ screen_grab_status }}</pre>
+        </div>
+        {% endif %}
+
+        <div class="controls">
+            <button class="btn-primary" onclick="connect()">连接</button>
+            <button class="btn-danger" onclick="disconnect()">断开</button>
+            <button class="btn-success" onclick="startAutoScreenshot()">开始自动截图</button>
+            <button class="btn-primary" onclick="stopAutoScreenshot()">停止自动截图</button>
+            <button class="btn-primary" onclick="requestScreenshot()">手动截图</button>
+            <button class="btn-primary" onclick="clearLogs()">清空日志</button>
+        </div>
+
+        <div class="screen-container">
+            <img id="remoteScreen" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='600'%3E%3Crect fill='%23333' width='800' height='600'/%3E%3Ctext x='400' y='300' text-anchor='middle' fill='%23fff' font-size='24'%3E等待连接...%3C/text%3E%3C/svg%3E" alt="远程屏幕">
+        </div>
+
+        <div class="info-panel">
+            <h3>📊 连接信息</h3>
+            <div class="info-item">
+                <span class="info-label">屏幕分辨率:</span>
+                <span class="info-value" id="screenResolution">{{ screen_width }} x {{ screen_height }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">鼠标位置:</span>
+                <span class="info-value" id="mousePosition">-</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">最后更新:</span>
+                <span class="info-value" id="lastUpdate">-</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">接收帧数:</span>
+                <span class="info-value" id="frameCount">0</span>
+            </div>
+        </div>
+
+        <div class="keyboard-hint">
+            <h4>⌨️ 操作提示</h4>
+            <ul>
+                <li>🖱️ 鼠标左键：点击屏幕进行点击操作</li>
+                <li>🖱️ 鼠标右键：右键点击屏幕</li>
+                <li>🖱️ 鼠标滚轮：在屏幕上滚动鼠标滚轮</li>
+                <li>⌨️ 键盘输入：点击屏幕后可直接输入文字</li>
+                <li>⌨️ 快捷键：支持 <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd>, <kbd>Ctrl+X</kbd>, <kbd>Ctrl+A</kbd>, <kbd>Ctrl+Z</kbd>, <kbd>Ctrl+S</kbd></li>
+            </ul>
+        </div>
+        
+        <div class="keyboard-hint" style="background: #d1ecf1; border-color: #bee5eb;">
+            <h4 style="color: #0c5460;">⚠️ 关于锁屏状态</h4>
+            <ul style="color: #0c5460;">
+                <li><strong>锁屏问题：</strong>如果 Windows Server 处于锁屏状态，截图可能显示黑屏</li>
+                <li><strong>原因：</strong>系统锁屏时会限制对活动桌面的访问</li>
+                <li><strong>解决方案：</strong>
+                    <ul style="margin-top: 10px; padding-left: 20px;">
+                        <li>保持远程桌面连接处于活动状态</li>
+                        <li>配置服务器不自动锁屏（组策略或电源设置）</li>
+                        <li>使用计划任务定期"唤醒"屏幕</li>
+                    </ul>
+                </li>
+                <li><strong>注意：</strong>系统会自动检测锁屏状态并显示警告</li>
+            </ul>
+        </div>
+
+        <div class="log-container" id="logContainer">
+            <div class="log-entry">
+                <span class="log-time">[系统]</span>
+                <span class="log-info">等待连接...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let autoScreenshotInterval = null;
+        let frameCount = 0;
+        let lastFrameTime = Date.now();
+        let fps = 0;
+        const screen = document.getElementById('remoteScreen');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const mousePosition = document.getElementById('mousePosition');
+        const lastUpdate = document.getElementById('lastUpdate');
+        const frameCountEl = document.getElementById('frameCount');
+        const fpsCounter = document.getElementById('fpsCounter');
+        const logContainer = document.getElementById('logContainer');
+        let currentMouseX = 0;
+        let currentMouseY = 0;
+        let isMouseDown = false;
+        let currentBlobUrl = null; // 跟踪当前的 blob URL
+
+        // 获取 WebSocket URL
+        function getWebSocketUrl() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            // 根据当前路径确定 WebSocket 路径
+            // 如果当前在 /api/remote/，则 WebSocket 也在 /api/remote/ws/
+            const path = window.location.pathname;
+            if (path.startsWith('/api/remote')) {
+                return `${protocol}//${host}/api/remote/ws/`;
+            }
+            return `${protocol}//${host}/ws/`;
+        }
+
+        // 连接 WebSocket
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addLog('已连接，无需重复连接', 'info');
+                return;
+            }
+
+            const url = getWebSocketUrl();
+            addLog(`正在连接到: ${url}`, 'info');
+            
+            ws = new WebSocket(url);
+
+            ws.onopen = function() {
+                addLog('WebSocket 连接成功！', 'success');
+                updateStatus(true);
+                // 自动开始截图
+                startAutoScreenshot();
+            };
+
+            ws.onmessage = function(event) {
+                if (event.data instanceof Blob) {
+                    // 接收截图数据
+                    const blob = event.data;
+                    
+                    // 保存旧的 blob URL（如果存在）
+                    const oldUrl = currentBlobUrl;
+                    
+                    // 创建新的 blob URL
+                    const newUrl = URL.createObjectURL(blob);
+                    currentBlobUrl = newUrl;
+                    
+                    // 使用 setTimeout 延迟清理，确保图片已经开始加载
+                    // 这样可以避免在图片加载前就清理 URL
+                    setTimeout(function() {
+                        // 清理旧的 URL（如果存在且不是当前 URL）
+                        if (oldUrl && oldUrl !== newUrl) {
+                            try {
+                                URL.revokeObjectURL(oldUrl);
+                            } catch (e) {
+                                console.warn('清理旧 blob URL 失败:', e);
+                            }
+                        }
+                    }, 100); // 100ms 延迟，足够图片开始加载
+                    
+                    // 设置错误处理
+                    const errorHandler = function() {
+                        console.error('图片加载失败');
+                        // 清理当前失败的 URL
+                        if (currentBlobUrl === newUrl) {
+                            try {
+                                URL.revokeObjectURL(newUrl);
+                                currentBlobUrl = null;
+                            } catch (e) {
+                                console.warn('清理失败 blob URL 失败:', e);
+                            }
+                        }
+                        screen.onerror = null;
+                    };
+                    
+                    // 设置图片加载完成后的回调
+                    const loadHandler = function() {
+                        // 图片加载成功，清除处理器
+                        screen.onload = null;
+                        screen.onerror = null;
+                    };
+                    
+                    screen.onload = loadHandler;
+                    screen.onerror = errorHandler;
+                    
+                    // 设置新的图片源
+                    screen.src = newUrl;
+                    
+                    // 更新统计信息
+                    frameCount++;
+                    frameCountEl.textContent = frameCount;
+                    
+                    // 计算 FPS
+                    const now = Date.now();
+                    const elapsed = now - lastFrameTime;
+                    if (elapsed > 0) {
+                        fps = Math.round(1000 / elapsed);
+                        fpsCounter.textContent = `FPS: ${fps}`;
+                    }
+                    lastFrameTime = now;
+                    
+                    // 更新最后更新时间
+                    lastUpdate.textContent = new Date().toLocaleTimeString();
+                } else {
+                    // 处理文本消息（可能是错误信息或警告）
+                    const data = event.data;
+                    if (data.startsWith('error:')) {
+                        try {
+                            const errorData = JSON.parse(data.substring(6));
+                            addLog(`错误: ${errorData.message}`, 'error');
+                            if (errorData.suggestion) {
+                                addLog(`建议: ${errorData.suggestion}`, 'info');
+                            }
+                        } catch (e) {
+                            addLog(`错误: ${data.substring(6)}`, 'error');
+                        }
+                    } else if (data.startsWith('warning:')) {
+                        try {
+                            const warningData = JSON.parse(data.substring(8));
+                            addLog(`⚠️ 警告: ${warningData.message}`, 'error');
+                            if (warningData.suggestion) {
+                                addLog(`💡 ${warningData.suggestion}`, 'info');
+                            }
+                        } catch (e) {
+                            addLog(`警告: ${data.substring(8)}`, 'error');
+                        }
+                    } else {
+                        addLog(`收到消息: ${data}`, 'info');
+                    }
+                }
+            };
+
+            ws.onerror = function(error) {
+                addLog(`WebSocket 错误: ${error}`, 'error');
+                updateStatus(false);
+            };
+
+            ws.onclose = function() {
+                addLog('WebSocket 连接已关闭', 'error');
+                updateStatus(false);
+                stopAutoScreenshot();
+            };
+        }
+
+        // 断开连接
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                addLog('已断开连接', 'info');
+                updateStatus(false);
+                stopAutoScreenshot();
+                
+                // 清理 blob URL
+                if (currentBlobUrl) {
+                    try {
+                        URL.revokeObjectURL(currentBlobUrl);
+                        currentBlobUrl = null;
+                    } catch (e) {
+                        console.warn('清理 blob URL 失败:', e);
+                    }
+                }
+            }
+        }
+
+        // 更新连接状态
+        function updateStatus(connected) {
+            if (connected) {
+                statusDot.classList.add('connected');
+                statusText.textContent = '已连接';
+            } else {
+                statusDot.classList.remove('connected');
+                statusText.textContent = '未连接';
+            }
+        }
+
+        // 请求截图
+        function requestScreenshot() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('screenshot');
+                addLog('已请求截图', 'info');
+            } else {
+                addLog('未连接，无法请求截图', 'error');
+            }
+        }
+
+        // 开始自动截图
+        function startAutoScreenshot() {
+            if (autoScreenshotInterval) {
+                return;
+            }
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                // 每 100ms 请求一次截图（约 10 FPS）
+                autoScreenshotInterval = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send('screenshot');
+                    }
+                }, 100);
+                addLog('已开始自动截图 (10 FPS)', 'success');
+            } else {
+                addLog('未连接，无法开始自动截图', 'error');
+            }
+        }
+
+        // 停止自动截图
+        function stopAutoScreenshot() {
+            if (autoScreenshotInterval) {
+                clearInterval(autoScreenshotInterval);
+                autoScreenshotInterval = null;
+                addLog('已停止自动截图', 'info');
+            }
+        }
+
+        // 屏幕事件处理
+        const SCREEN_WIDTH = {{ screen_width }};
+        const SCREEN_HEIGHT = {{ screen_height }};
+        
+        screen.addEventListener('mousemove', function(e) {
+            const rect = screen.getBoundingClientRect();
+            const scaleX = SCREEN_WIDTH / rect.width;
+            const scaleY = SCREEN_HEIGHT / rect.height;
+            
+            currentMouseX = Math.round((e.clientX - rect.left) * scaleX);
+            currentMouseY = Math.round((e.clientY - rect.top) * scaleY);
+            
+            mousePosition.textContent = `${currentMouseX}, ${currentMouseY}`;
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(`mouseMove:${currentMouseX},${currentMouseY}`);
+            }
+        });
+
+        screen.addEventListener('mousedown', function(e) {
+            isMouseDown = true;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(`mouseDown:${currentMouseX},${currentMouseY}`);
+            }
+        });
+
+        screen.addEventListener('mouseup', function(e) {
+            isMouseDown = false;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(`mouseUp:${currentMouseX},${currentMouseY}`);
+            }
+        });
+
+        screen.addEventListener('click', function(e) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(`mouseClick:${currentMouseX},${currentMouseY}`);
+            }
+        });
+
+        screen.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(`mouseRightClick:${currentMouseX},${currentMouseY}`);
+            }
+        });
+
+        screen.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const delta = e.deltaY > 0 ? -3 : 3;
+                ws.send(`mouseScroll:${currentMouseX},${currentMouseY}:${delta}`);
+            }
+        });
+
+        // 键盘事件处理
+        document.addEventListener('keydown', function(e) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                // 处理特殊组合键
+                if (e.ctrlKey) {
+                    if (e.key === 'c') {
+                        ws.send('keyDown:ctrl_c');
+                        e.preventDefault();
+                    } else if (e.key === 'v') {
+                        ws.send('keyDown:ctrl_v');
+                        e.preventDefault();
+                    } else if (e.key === 'x') {
+                        ws.send('keyDown:ctrl_x');
+                        e.preventDefault();
+                    } else if (e.key === 'a') {
+                        ws.send('keyDown:ctrl_a');
+                        e.preventDefault();
+                    } else if (e.key === 'z') {
+                        ws.send('keyDown:ctrl_z');
+                        e.preventDefault();
+                    } else if (e.key === 's') {
+                        ws.send('keyDown:ctrl_s');
+                        e.preventDefault();
+                    }
+                } else {
+                    // 普通按键
+                    const key = e.key.length === 1 ? e.key : e.key.toLowerCase();
+                    ws.send(`keyDown:${key}`);
+                }
+            }
+        });
+
+        document.addEventListener('keyup', function(e) {
+            if (ws && ws.readyState === WebSocket.OPEN && !e.ctrlKey) {
+                const key = e.key.length === 1 ? e.key : e.key.toLowerCase();
+                ws.send(`keyUp:${key}`);
+            }
+        });
+
+        // 添加日志
+        function addLog(message, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'log-time';
+            timeSpan.textContent = `[${time}]`;
+            
+            const messageSpan = document.createElement('span');
+            messageSpan.className = `log-${type}`;
+            messageSpan.textContent = message;
+            
+            logEntry.appendChild(timeSpan);
+            logEntry.appendChild(messageSpan);
+            logContainer.appendChild(logEntry);
+            
+            // 自动滚动到底部
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // 限制日志数量
+            while (logContainer.children.length > 100) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+        }
+
+        // 清空日志
+        function clearLogs() {
+            logContainer.innerHTML = '';
+            addLog('日志已清空', 'info');
+        }
+
+        // 页面加载时自动连接
+        window.addEventListener('load', function() {
+            addLog('页面加载完成，准备连接...', 'info');
+            // 可以选择自动连接或手动连接
+            // connect();
+        });
+
+        // 页面卸载时断开连接
+        window.addEventListener('beforeunload', function() {
+            disconnect();
+        });
+    </script>
+</body>
+</html>
+
