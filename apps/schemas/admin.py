@@ -135,6 +135,17 @@ class SystemStats(BaseModel):
     pending_tasks: int = 0
     users_today: int = 0
     tasks_today: int = 0
+    # 系统资源信息
+    cpu_usage: Optional[float] = None  # CPU 使用率 (%)
+    cpu_cores: Optional[int] = None  # CPU 核心数
+    memory_usage: Optional[float] = None  # 内存使用率 (%)
+    memory_total: Optional[int] = None  # 总内存 (MB)
+    memory_used: Optional[int] = None  # 已用内存 (MB)
+    memory_available: Optional[int] = None  # 可用内存 (MB)
+    gpu_usage: Optional[float] = None  # GPU 使用率 (%)
+    gpu_memory_used: Optional[int] = None  # GPU 显存已用 (MB)
+    gpu_memory_total: Optional[int] = None  # GPU 显存总量 (MB)
+    gpu_count: Optional[int] = None  # GPU 数量
 
 
 class UserStatsItem(BaseModel):

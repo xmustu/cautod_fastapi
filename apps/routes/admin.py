@@ -9,12 +9,12 @@
 - 系统配置管理
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from tortoise.expressions import Q
 from tortoise.functions import Count
 
-from database.models import Users, Tasks, Conversations, GeometryResults, OptimizationResults, ErrorLogs, UserRole
+from database.models import Users, Tasks, Conversations, GeometryResults, OptimizationResults, ErrorLogs, UserRole, SystemConfig as SystemConfigModel
 from apps.schemas.admin import (
     AdminUserListItem, AdminUserDetail, AdminUserUpdate, AdminUserCreate, AdminBatchDeleteUsers,
     AdminTaskListItem, AdminTaskDetail, AdminTaskUpdate, AdminBatchDeleteTasks,
@@ -24,10 +24,92 @@ from apps.schemas.admin import (
 from core.authentication import User, get_current_active_user
 from core.permissions import require_admin
 from core.hashing import Hasher
+from config import settings
 import math
+
+# 尝试导入系统监控库
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
+# 尝试导入 GPU 监控库
+try:
+    import pynvml
+    PYNVML_AVAILABLE = True
+except ImportError:
+    PYNVML_AVAILABLE = False
 
 
 admin_router = APIRouter(prefix="/admin", tags=["管理员"])
+
+
+# ============================================
+# 系统资源监控辅助函数
+# ============================================
+
+def get_system_resources() -> Dict:
+    """
+    获取系统资源使用情况
+    返回 CPU、内存、GPU 等信息
+    """
+    resources = {
+        "cpu_usage": None,
+        "cpu_cores": None,
+        "memory_usage": None,
+        "memory_total": None,
+        "memory_used": None,
+        "memory_available": None,
+        "gpu_usage": None,
+        "gpu_memory_used": None,
+        "gpu_memory_total": None,
+        "gpu_count": None,
+    }
+    
+    # 获取 CPU 和内存信息
+    if PSUTIL_AVAILABLE:
+        try:
+            # CPU 信息
+            resources["cpu_usage"] = round(psutil.cpu_percent(interval=0.1), 2)
+            resources["cpu_cores"] = psutil.cpu_count(logical=False)  # 物理核心数
+            if resources["cpu_cores"] is None:
+                resources["cpu_cores"] = psutil.cpu_count(logical=True)  # 逻辑核心数
+            
+            # 内存信息
+            memory = psutil.virtual_memory()
+            resources["memory_usage"] = round(memory.percent, 2)
+            resources["memory_total"] = round(memory.total / (1024 * 1024))  # MB
+            resources["memory_used"] = round(memory.used / (1024 * 1024))  # MB
+            resources["memory_available"] = round(memory.available / (1024 * 1024))  # MB
+        except Exception as e:
+            # 如果获取失败，保持 None 值
+            pass
+    
+    # 获取 GPU 信息（NVIDIA）
+    if PYNVML_AVAILABLE:
+        try:
+            pynvml.nvmlInit()
+            gpu_count = pynvml.nvmlDeviceGetCount()
+            resources["gpu_count"] = gpu_count
+            
+            if gpu_count > 0:
+                # 获取第一个 GPU 的信息（可以扩展为多个 GPU）
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                
+                # GPU 使用率
+                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                resources["gpu_usage"] = round(util.gpu, 2)
+                
+                # GPU 显存信息
+                mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                resources["gpu_memory_used"] = round(mem_info.used / (1024 * 1024))  # MB
+                resources["gpu_memory_total"] = round(mem_info.total / (1024 * 1024))  # MB
+        except Exception as e:
+            # 如果获取失败，保持 None 值
+            pass
+    
+    return resources
 
 
 # ============================================
@@ -43,6 +125,7 @@ async def get_system_stats(
     - 总用户数、任务数、会话数
     - 各状态任务数量
     - 今日新增数据
+    - 系统资源使用情况（CPU、内存、显存）
     """
     # 基础统计
     total_users = await Users.all().count()
@@ -60,6 +143,9 @@ async def get_system_stats(
     users_today = await Users.filter(created_at__gte=today_start).count()
     tasks_today = await Tasks.filter(created_at__gte=today_start).count()
     
+    # 获取系统资源信息
+    system_resources = get_system_resources()
+    
     return SystemStats(
         total_users=total_users,
         total_tasks=total_tasks,
@@ -69,7 +155,17 @@ async def get_system_stats(
         failed_tasks=failed_tasks,
         pending_tasks=pending_tasks,
         users_today=users_today,
-        tasks_today=tasks_today
+        tasks_today=tasks_today,
+        cpu_usage=system_resources.get("cpu_usage"),
+        cpu_cores=system_resources.get("cpu_cores"),
+        memory_usage=system_resources.get("memory_usage"),
+        memory_total=system_resources.get("memory_total"),
+        memory_used=system_resources.get("memory_used"),
+        memory_available=system_resources.get("memory_available"),
+        gpu_usage=system_resources.get("gpu_usage"),
+        gpu_memory_used=system_resources.get("gpu_memory_used"),
+        gpu_memory_total=system_resources.get("gpu_memory_total"),
+        gpu_count=system_resources.get("gpu_count"),
     )
 
 
@@ -540,9 +636,42 @@ async def get_system_config(
     current_user: User = Depends(require_admin)
 ):
     """
-    获取系统配置（当前为默认值，后续可从数据库或配置文件读取）
+    获取系统配置
+    - 优先从数据库读取
+    - 如果数据库中没有配置，则从配置文件读取默认值并初始化到数据库
     """
-    return SystemConfig()
+    # 尝试从数据库读取配置
+    db_config = await SystemConfigModel.first()
+    
+    if db_config:
+        # 数据库中有配置，直接返回
+        return SystemConfig(
+            max_tasks_per_user=db_config.max_tasks_per_user,
+            max_conversations_per_user=db_config.max_conversations_per_user,
+            enable_registration=db_config.enable_registration,
+            enable_email_verification=db_config.enable_email_verification,
+            maintenance_mode=db_config.maintenance_mode
+        )
+    else:
+        # 数据库中没有配置，从配置文件读取默认值并初始化
+        default_config = SystemConfig(
+            max_tasks_per_user=settings.SYSTEM_MAX_TASKS_PER_USER,
+            max_conversations_per_user=settings.SYSTEM_MAX_CONVERSATIONS_PER_USER,
+            enable_registration=settings.SYSTEM_ENABLE_REGISTRATION,
+            enable_email_verification=settings.SYSTEM_ENABLE_EMAIL_VERIFICATION,
+            maintenance_mode=settings.SYSTEM_MAINTENANCE_MODE
+        )
+        
+        # 将默认配置保存到数据库
+        await SystemConfigModel.create(
+            max_tasks_per_user=default_config.max_tasks_per_user,
+            max_conversations_per_user=default_config.max_conversations_per_user,
+            enable_registration=default_config.enable_registration,
+            enable_email_verification=default_config.enable_email_verification,
+            maintenance_mode=default_config.maintenance_mode
+        )
+        
+        return default_config
 
 
 @admin_router.put("/config", summary="更新系统配置", response_model=AdminResponse)
@@ -551,9 +680,31 @@ async def update_system_config(
     current_user: User = Depends(require_admin)
 ):
     """
-    更新系统配置（后续可实现持久化）
+    更新系统配置
+    - 更新数据库中的配置记录
+    - 如果数据库中没有配置，则创建新记录
     """
-    # TODO: 实现配置持久化到数据库或配置文件
+    # 获取或创建配置记录（单例模式，只保留一条记录）
+    db_config = await SystemConfigModel.first()
+    
+    if db_config:
+        # 更新现有配置
+        db_config.max_tasks_per_user = config.max_tasks_per_user
+        db_config.max_conversations_per_user = config.max_conversations_per_user
+        db_config.enable_registration = config.enable_registration
+        db_config.enable_email_verification = config.enable_email_verification
+        db_config.maintenance_mode = config.maintenance_mode
+        await db_config.save()
+    else:
+        # 创建新配置记录
+        await SystemConfigModel.create(
+            max_tasks_per_user=config.max_tasks_per_user,
+            max_conversations_per_user=config.max_conversations_per_user,
+            enable_registration=config.enable_registration,
+            enable_email_verification=config.enable_email_verification,
+            maintenance_mode=config.maintenance_mode
+        )
+    
     return AdminResponse(
         status="success",
         message="系统配置更新成功"

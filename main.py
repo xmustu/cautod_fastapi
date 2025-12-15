@@ -19,6 +19,7 @@ from apps.routes.tasks import router as tasks_router
 from apps.routes.chat import router as chat_router
 from apps.routes.login import router as login_router
 from apps.routes.admin import admin_router
+from apps.routes.remote import app as remote_touter
 from core.middleware import count_time_middleware,FullRequestLoggerMiddleware
 
 from database.settings import TORTOISE_ORM_SQLITE, TORTOISE_ORM_MYSQL
@@ -273,6 +274,7 @@ app.include_router(tasks_router, prefix="/api/tasks") # 任务管理路由
 app.include_router(router, prefix="/api", tags=["功能", ])
 app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
 app.include_router(admin_router, prefix="/api") # 管理员路由
+app.include_router(remote_touter, prefix="/api/remote", tags=["远程控制"])
 print("到这")
 # 显式加载日志配置文件
 with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:
