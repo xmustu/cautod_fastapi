@@ -11,6 +11,7 @@ FastAPI 依赖项是最佳实践，因为：
 - 更好的类型提示和 IDE 支持
 - 符合 FastAPI 的设计理念
 """
+from typing import Optional, Tuple
 from fastapi import Depends, HTTPException, status
 from core.authentication import get_current_active_user, User
 from database.models import Users, UserRole
@@ -60,7 +61,7 @@ async def require_premium_or_admin(current_user: User = Depends(get_current_acti
     return current_user
 
 
-async def get_user_with_role(current_user: User = Depends(get_current_active_user)) -> tuple[User, UserRole]:
+async def get_user_with_role(current_user: User = Depends(get_current_active_user)) -> Tuple[User, UserRole]:
     """
     获取当前用户及其角色（当你需要根据角色执行不同逻辑时使用）
     
@@ -147,7 +148,7 @@ class PermissionChecker:
         return user_level >= required_level
     
     @staticmethod
-    async def get_user_role(user_email: str) -> UserRole | None:
+    async def get_user_role(user_email: str) -> Optional[UserRole]:
         """获取用户的角色，如果用户不存在返回 None"""
         user = await Users.get_or_none(email=user_email)
         return user.role if user else None

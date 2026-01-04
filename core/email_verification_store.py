@@ -2,14 +2,14 @@ import logging
 import random
 import threading
 import time
-from typing import Optional
+from typing import Optional, Dict, Tuple
 
 from config import settings
 
 logger = logging.getLogger(__name__)
 
-_memory_store: dict[str, tuple[str, float]] = {}
-_memory_code_store: dict[str, tuple[str, float]] = {}
+_memory_store: Dict[str, Tuple[str, float]] = {}
+_memory_code_store: Dict[str, Tuple[str, float]] = {}
 _lock = threading.Lock()
 
 _REDIS_CLIENT = None

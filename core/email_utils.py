@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import jwt
 from jwt.exceptions import InvalidTokenError
@@ -228,7 +228,7 @@ def generate_password_reset_token(email: str) -> str:
     return encoded_jwt
 
 
-def verify_password_reset_token(token: str) -> str | None:
+def verify_password_reset_token(token: str) -> Optional[str]:
     """
     验证密码重置 token
     
@@ -264,7 +264,7 @@ def generate_email_verification_token(email: str) -> str:
     return create_email_verification_code(email)
 
 
-def verify_email_verification_token(token: str) -> str | None:
+def verify_email_verification_token(token: str) -> Optional[str]:
     """兼容旧接口，通过验证码反查邮箱"""
     return get_email_by_code(token)
 
