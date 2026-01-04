@@ -19,6 +19,7 @@ from pathlib import Path
 from core.authentication import authenticate
 from core.authentication import get_current_active_user, User
 from core.permissions import PermissionChecker
+from core.system_config import check_file_size_async, check_maintenance_mode
 from database.models import *
 
 from apps.routes.chat import get_message_key, get_user_task_key
@@ -53,6 +54,7 @@ async def save_file(file, path: Optional[str] = None, conversation_id: int = Non
         os.makedirs(path, exist_ok=True)
     print("path: ", path)
     res = await file.read()
+    # 注意：文件大小检查已经在 upload_file 接口中完成
     #hash_name = hashlib.md5(file.filename.encode()).hexdigest()[:16]
     #file_name = f"{hash_name}.{file.filename.rsplit('.', 1)[-1]}"
     # full_file = f"{path}\{file.filename}"
@@ -73,7 +75,7 @@ def home(request: Request, alert: Optional[str] = None):
 
 @router.post("/model", response_class=Response)
 async def get_model(request: FileRequest,
-              current_user: User = Depends(get_current_active_user)):
+              current_user: User = Depends(check_maintenance_mode)):
     
     # 验证文件归属
     task = await Tasks.get_or_none(
@@ -143,10 +145,19 @@ async def upload_file(*,
                 file: UploadFile,
                 conversation_id: str = Form(...),
                 task_id: int = Form(...),
-                current_user: User = Depends(get_current_active_user),
+                current_user: User = Depends(check_maintenance_mode),
                 path: Optional[str] = None,
 
                 ):
+    # 检查文件大小限制
+    # 读取文件内容检查大小
+    file_content = await file.read()
+    await check_file_size_async(len(file_content))
+    
+    # 将内容写回到文件对象（使用 BytesIO 包装以便 save_file 可以重新读取）
+    from io import BytesIO
+    file.file = BytesIO(file_content)
+    file.file.seek(0)
     
     file_local = await save_file(file, path, conversation_id, task_id)
     return {"file_name":file.filename, 
@@ -158,7 +169,7 @@ async def upload_file(*,
 @router.post("/download_file", summary="下载文件")
 async def download_file(
     request: FileRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     从服务器安全地下载文件。
@@ -244,7 +255,7 @@ async def download_file(
         summary="获取任务状态")
 async def get_task_status(
     task_id: str,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     获取任务状态
@@ -276,7 +287,7 @@ async def get_task_status(
 async def get_conversation(
     request: Request,
     conversation_id: str,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     获取单个会话
@@ -310,7 +321,7 @@ async def get_conversation(
 async def get_all_conversations(
     request: Request,
     user_id: str,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     获取全部会话
@@ -344,7 +355,7 @@ async def get_all_conversations(
 async def delete_conversation(
     request: Request,
     conversation_id: str,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     删除一个会话，包括：
@@ -400,3 +411,37 @@ async def delete_conversation(
     await conversation.delete()
     
     return {"message": "会话及所有关联数据已成功删除"}
+
+
+@router.get("/dify-chat-config", summary="获取 Dify 聊天配置")
+async def get_dify_chat_config():
+    """
+    获取 Dify 聊天嵌入配置
+    这是一个公开端点，不需要认证，用于前端初始化聊天组件
+    """
+    return {
+        "token": settings.DIFY_CHAT_TOKEN,
+        "baseUrl": settings.DIFY_CHAT_BASE_URL,
+    }
+
+
+@router.get("/dify-chat-embed", summary="获取 Dify 聊天嵌入代码")
+async def get_dify_chat_embed(request: Request):
+    """
+    获取完整的 Dify 聊天嵌入代码（HTML/JS/CSS）
+    这是一个公开端点，不需要认证，返回可直接插入页面的完整嵌入代码
+    """
+    # 清理 baseUrl，确保没有末尾斜杠
+    base_url = settings.DIFY_CHAT_BASE_URL.rstrip('/')
+    token = settings.DIFY_CHAT_TOKEN
+    
+    # 使用模板渲染嵌入代码
+    return templates.TemplateResponse(
+        "dify_embed.html",
+        {
+            "request": request,
+            "token": token,
+            "base_url": base_url,
+        },
+        media_type="text/html"
+    )
