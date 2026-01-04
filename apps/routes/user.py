@@ -17,6 +17,13 @@ from core.authentication import create_token
 from core.authentication import  User
 from core.authentication import get_current_active_user
 from core.permissions import require_admin
+from core.system_config import (
+    check_registration_enabled,
+    get_default_user_role,
+    check_maintenance_mode,
+    is_email_verification_enabled,
+    is_email_notification_enabled
+)
 from config import settings
 from core.email_utils import (
     clear_email_verification_code,
@@ -56,7 +63,7 @@ templates = Jinja2Templates(directory="templates")
 
 
 @user.get("/me", summary="获取当前用户信息", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_active_user)):
+async def get_me(current_user: User = Depends(check_maintenance_mode)):
     # current_user 是从 token 中解码出的 Pydantic 模型
     # 我们用它来从数据库中获取最新的、完整的用户信息
     user_info = await Users.get(email=current_user.email).values(
@@ -186,10 +193,11 @@ async def login(request: Request,
     summary="验证码重置密码",
 )
 async def reset_password_with_code(body: PasswordResetWithCodeRequest) -> Message:
-    if not settings.EMAILS_ENABLED:
+    # 检查是否启用了邮箱验证
+    if not await is_email_verification_enabled():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email verification not enabled",
+            detail="邮箱验证功能未启用",
         )
 
     if not verify_email_verification_code(body.email, body.verification_code):
@@ -221,6 +229,13 @@ async def send_password_reset_code(request: PasswordRecoveryRequest) -> Message:
     """
     发送密码重置验证码
     """
+    # 检查是否启用了邮箱验证
+    if not await is_email_verification_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="邮箱验证功能未启用",
+        )
+    
     user = await Users.get_or_none(email=request.email)
 
     if not user:
@@ -340,6 +355,9 @@ async def register(request: UserRegisterRequest):
     - 邮箱: 标准邮箱格式验证
     - 密码: 8-128字符
     """
+    # 0. 检查系统是否允许注册
+    await check_registration_enabled()
+    
     # 1. 检查用户名是否已存在
     if await Users.filter(username=request.username).exists():
         raise HTTPException(
@@ -364,6 +382,14 @@ async def register(request: UserRegisterRequest):
     try:
         # 3. 对密码进行哈希处理并创建用户
         hashed_password = Hasher.get_password_hash(request.password)
+        
+        # 3.5. 获取默认用户角色
+        default_role = await get_default_user_role()
+        user_role = UserRole.USER
+        if default_role == "premium":
+            user_role = UserRole.PREMIUM
+        elif default_role == "admin":
+            user_role = UserRole.ADMIN
 
         # 4. 创建用户
         user = await Users.create(
@@ -371,6 +397,7 @@ async def register(request: UserRegisterRequest):
             username=request.username.strip(),  # 去除首尾空格
             email=request.email,
             password_hash=hashed_password,
+            role=user_role,  # 使用系统配置的默认角色
         )
         # 5. 返回成功响应
         return UserResponse(
@@ -413,14 +440,21 @@ async def send_registration_verification_email(
     """
     发送注册验证码到指定邮箱，用于后续验证。
     """
+    # 检查系统是否允许注册
+    await check_registration_enabled()
+    
     if await Users.filter(email=request.email).exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
         )
 
-    if not settings.EMAILS_ENABLED:
-        return Message(message="Email verification disabled, no code sent")
+    # 检查是否启用了邮箱验证
+    if not await is_email_verification_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="邮箱验证功能未启用",
+        )
 
     verification_code = create_email_verification_code(email=request.email)
     email_data = generate_verification_email(
@@ -447,6 +481,8 @@ async def register_user_with_email(request: EmailRegisterRequest) -> Message:
     """
     通过邮箱验证码完成注册，并发送欢迎邮件。
     """
+    # 检查系统是否允许注册
+    await check_registration_enabled()
     username = request.username.strip()
 
     if await Users.filter(username=username).exists():
@@ -461,11 +497,13 @@ async def register_user_with_email(request: EmailRegisterRequest) -> Message:
             detail="Email already registered",
         )
 
-    if settings.EMAILS_ENABLED:
+    # 检查是否启用了邮箱验证
+    email_verification_enabled = await is_email_verification_enabled()
+    if email_verification_enabled:
         if not request.verification_code:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification code is required",
+                detail="验证码是必需的",
             )
         if not verify_email_verification_code(
             request.email,
@@ -473,17 +511,26 @@ async def register_user_with_email(request: EmailRegisterRequest) -> Message:
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired verification code",
+                detail="验证码无效或已过期",
             )
         clear_email_verification_code(request.email)
 
     hashed_password = Hasher.get_password_hash(request.password)
+    
+    # 获取默认用户角色
+    default_role = await get_default_user_role()
+    user_role = UserRole.USER
+    if default_role == "premium":
+        user_role = UserRole.PREMIUM
+    elif default_role == "admin":
+        user_role = UserRole.ADMIN
 
     try:
         user = await Users.create(
             username=username,
             email=request.email,
             password_hash=hashed_password,
+            role=user_role,  # 使用系统配置的默认角色
         )
     except Exception as exc:  # pragma: no cover - 数据库异常
         logging.exception("Failed to create user for email registration")
@@ -492,26 +539,29 @@ async def register_user_with_email(request: EmailRegisterRequest) -> Message:
             detail="Failed to create user",
         ) from exc
 
-    try:
-        email_data = generate_new_account_email(
-            email_to=user.email,
-            username=user.username,
-            password=request.password,
-        )
-        send_email(
-            email_to=user.email,
-            subject=email_data.subject,
-            html_content=email_data.html_content,
-        )
-    except Exception as exc:  # pragma: no cover - 邮件发送异常
-        logging.exception("Failed to send registration email, rolling back user creation")
-        await user.delete()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send registration email",
-        ) from exc
-
-    return Message(message="User registered and welcome email sent")
+    # 检查是否启用了邮件通知，如果启用则发送欢迎邮件
+    if await is_email_notification_enabled():
+        try:
+            email_data = generate_new_account_email(
+                email_to=user.email,
+                username=user.username,
+                password=request.password,
+            )
+            send_email(
+                email_to=user.email,
+                subject=email_data.subject,
+                html_content=email_data.html_content,
+            )
+        except Exception as exc:  # pragma: no cover - 邮件发送异常
+            logging.exception("Failed to send registration email, rolling back user creation")
+            await user.delete()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send registration email",
+            ) from exc
+        return Message(message="User registered and welcome email sent")
+    else:
+        return Message(message="User registered successfully")
 
 @user.get("/{user_id}", summary="获取指定用户信息", response_model=UserResponse)
 async def get_user(user_id: int,current_user: User = Depends(require_admin)):
@@ -623,7 +673,7 @@ async def delete_user_by_admin(
 @user.put("/change-password", summary="修改密码（普通用户权限）")
 async def change_password(
     request: PasswordChangeRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     修改当前用户的密码
@@ -663,7 +713,7 @@ async def change_password(
 @user.put("/update-username", summary="更新用户名（普通用户权限）")
 async def update_username(
     request: UsernameUpdateRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     更新用户名
