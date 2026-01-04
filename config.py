@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings,SettingsConfigDict
 
 from pydantic import (
@@ -32,11 +33,11 @@ class Settings(BaseSettings):
     
     # SMTP 邮件服务配置
     EMAILS_ENABLED: bool = False
-    SMTP_HOST: str | None = None
-    SMTP_USER: str | None = None
-    SMTP_PASSWORD: str | None = None
-    EMAILS_FROM_EMAIL: EmailStr | None = None
-    EMAILS_FROM_NAME: str | None = None
+    SMTP_HOST: Optional[str] = None
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    EMAILS_FROM_EMAIL: Optional[EmailStr] = None
+    EMAILS_FROM_NAME: Optional[str] = None
     SMTP_TLS: bool = False
     SMTP_SSL: bool = True
     SMTP_PORT: int = 465
@@ -71,7 +72,24 @@ class Settings(BaseSettings):
     DIFY_LISTEN_PORT: int
     DIFY_TARGET_HOST: str
     DIFY_TARGET_PORT: int
-    model_config = SettingsConfigDict(env_file=".env.dev")
+    
+    # Dify Chat Embedding Configuration
+    DIFY_CHAT_TOKEN: str
+    DIFY_CHAT_BASE_URL: str
+    
+    # 系统配置默认值（用于初始化数据库配置）
+    SYSTEM_MAX_TASKS_PER_USER: int = 100
+    SYSTEM_MAX_CONVERSATIONS_PER_USER: int = 50
+    SYSTEM_ENABLE_REGISTRATION: bool = True
+    SYSTEM_ENABLE_EMAIL_VERIFICATION: bool = True
+    SYSTEM_ENABLE_EMAIL_NOTIFICATIONS: bool = True
+    SYSTEM_MAINTENANCE_MODE: bool = False
+    SYSTEM_MAX_FILE_SIZE_MB: int = 100
+    SYSTEM_API_RATE_LIMIT: int = 100
+    SYSTEM_SESSION_TIMEOUT_MINUTES: int = 60
+    SYSTEM_DEFAULT_USER_ROLE: str = "user"
+    
+    model_config = SettingsConfigDict(env_file=".env.prod")
 
     # class Settings:
     #     env_file = ".env"

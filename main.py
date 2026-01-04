@@ -20,7 +20,11 @@ from apps.routes.chat import router as chat_router
 from apps.routes.login import router as login_router
 from apps.routes.admin import admin_router
 from apps.routes.remote import app as remote_touter
-from core.middleware import count_time_middleware,FullRequestLoggerMiddleware
+from core.middleware import (
+    count_time_middleware,
+    FullRequestLoggerMiddleware,
+    RateLimitMiddleware,
+)
 
 from database.settings import TORTOISE_ORM_SQLITE, TORTOISE_ORM_MYSQL
 from database.sql import register_sql
@@ -98,6 +102,12 @@ async def lifespan(app: FastAPI):
 
     # 初始化管理员账号
     await init_admin_account()
+    
+    # 速率限制中间件已在应用创建后注册，会自动从 app.state.redis 获取连接
+    if app.state.redis:
+        print("✓ API速率限制中间件已启用（使用Redis）")
+    else:
+        print("⚠ Redis未连接，速率限制将使用内存模式（不推荐用于生产环境）")
 
     #获取动态配置
 
@@ -248,6 +258,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 添加速率限制中间件（在 CORS 之后注册，这样速率限制会在请求处理前先检查）
+# 中间件会在运行时从 app.state.redis 获取连接
+app.add_middleware(RateLimitMiddleware)
+
 # count_time_middleware(app)  # 计时中间件
 
 # app.add_middleware(FullRequestLoggerMiddleware)
@@ -276,7 +290,7 @@ app.include_router(chat_router, prefix="/api/chat", tags=["对话管理"])
 app.include_router(admin_router, prefix="/api") # 管理员路由
 app.include_router(remote_touter, prefix="/api/remote", tags=["远程控制"])
 print("到这")
-# 显式加载日志配置文件
+# 显式加载日志配置文件True
 with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:
     log_config = json.load(f)
     
