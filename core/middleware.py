@@ -60,25 +60,199 @@ def request_response_middleware(app: FastAPI):
 
 
 
-# 访问速率限制的中间件示例
+# 访问速率限制的中间件（基于 Redis）
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: FastAPI, rate_limit: int = 100):
+    """
+    基于 Redis 的 API 速率限制中间件
+    使用固定时间窗口算法（每分钟）
+    """
+    def __init__(self, app: FastAPI):
         super().__init__(app)
-        self.rate_limit = rate_limit
-        self.request_records: dict[str, float] = defaultdict(float) # defacultdict 当访问键值对不存在时，新建
-
-    # 重载
-
-    async def dispatch(self, request: Request, call_next):
-        ip = request.client.host
-        current_time = time.time()
-
-        if current_time - self.request_records[ip] < 5:
-            return Response(content="Too Many Requests", status_code=429)
+        self.time_window = 60  # 时间窗口：60秒（1分钟）
+        self.redis_client = None
         
+    async def dispatch(self, request: Request, call_next):
+        # 跳过健康检查和静态文件
+        if request.url.path in ["/docs", "/openapi.json", "/redoc", "/favicon.ico"]:
+            return await call_next(request)
+        
+        # 跳过静态文件路径
+        if request.url.path.startswith(("/static/", "/files/")):
+            return await call_next(request)
+        
+        # 获取客户端标识（优先使用用户ID，否则使用IP）
+        client_id = await self._get_client_id(request)
+        
+        # 从系统配置获取速率限制
+        rate_limit = await self._get_rate_limit()
+        
+        # 如果速率限制为0或负数，则不限制
+        if rate_limit <= 0:
+            return await call_next(request)
+        
+        # 获取 Redis 客户端（从 app.state 获取）
+        redis_client = None
+        try:
+            redis_client = request.app.state.redis
+            self.redis_client = redis_client
+        except AttributeError:
+            pass
+        
+        # 检查速率限制
+        if redis_client:
+            is_allowed = await self._check_rate_limit_redis(redis_client, client_id, rate_limit)
+        else:
+            # 如果没有 Redis，使用内存版本（不推荐用于生产环境）
+            is_allowed = await self._check_rate_limit_memory(client_id, rate_limit)
+        
+        if not is_allowed:
+            return Response(
+                content=json.dumps({
+                    "detail": f"请求过于频繁，请稍后再试。限制：{rate_limit} 次/分钟"
+                }),
+                status_code=429,
+                media_type="application/json",
+                headers={
+                    "Retry-After": str(self.time_window),
+                    "X-RateLimit-Limit": str(rate_limit),
+                    "X-RateLimit-Window": str(self.time_window)
+                }
+            )
+        
+        # 继续处理请求
         response = await call_next(request)
-        self.request_records[ip] = current_time
+        
+        # 添加速率限制响应头
+        try:
+            redis_client = request.app.state.redis
+            remaining = await self._get_remaining_requests(redis_client, client_id, rate_limit)
+        except:
+            remaining = rate_limit
+        
+        response.headers["X-RateLimit-Limit"] = str(rate_limit)
+        response.headers["X-RateLimit-Remaining"] = str(max(0, remaining))
+        response.headers["X-RateLimit-Window"] = str(self.time_window)
+        
         return response
+    
+    async def _get_client_id(self, request: Request) -> str:
+        """
+        获取客户端标识
+        优先使用用户ID（如果已登录），否则使用IP地址
+        """
+        # 尝试从请求中获取用户信息
+        try:
+            # 检查是否有认证token
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                # 这里可以解析token获取用户ID，但为了简化，我们使用IP
+                # 如果需要更精确的用户级别限制，可以在这里实现
+                pass
+        except:
+            pass
+        
+        # 使用IP地址作为客户端标识
+        client_ip = request.client.host if request.client else "unknown"
+        return f"rate_limit:{client_ip}"
+    
+    async def _get_rate_limit(self) -> int:
+        """
+        从系统配置获取速率限制
+        """
+        try:
+            from core.system_config import get_system_config_cached
+            system_config = await get_system_config_cached()
+            return system_config.api_rate_limit or 100
+        except Exception as e:
+            # 如果获取配置失败，返回默认值
+            print(f"获取速率限制配置失败: {e}")
+            return 100
+    
+    async def _check_rate_limit_redis(self, redis_client, client_id: str, rate_limit: int) -> bool:
+        """
+        使用 Redis 检查速率限制（固定时间窗口）
+        """
+        try:
+            import time
+            current_time = int(time.time())
+            window_start = current_time - (current_time % self.time_window)
+            key = f"{client_id}:{window_start}"
+            
+            # 获取当前窗口的请求数
+            current_count = await self.redis_client.get(key)
+            
+            if current_count is None:
+                # 第一次请求，设置计数为1，过期时间为时间窗口
+                await self.redis_client.setex(key, self.time_window, 1)
+                return True
+            
+            current_count = int(current_count)
+            
+            if current_count >= rate_limit:
+                return False
+            
+            # 增加计数
+            await self.redis_client.incr(key)
+            # 更新过期时间（防止key过期）
+            await self.redis_client.expire(key, self.time_window)
+            
+            return True
+        except Exception as e:
+            # Redis 连接失败时，允许请求通过（避免因Redis问题导致服务不可用）
+            print(f"Redis速率限制检查失败: {e}，允许请求通过")
+            return True
+    
+    async def _check_rate_limit_memory(self, client_id: str, rate_limit: int) -> bool:
+        """
+        使用内存检查速率限制（备用方案，不推荐用于生产环境）
+        """
+        import time
+        current_time = time.time()
+        window_start = int(current_time) - (int(current_time) % self.time_window)
+        key = f"{client_id}:{window_start}"
+        
+        if not hasattr(self, '_memory_rate_limit'):
+            self._memory_rate_limit = {}
+        
+        # 清理过期的记录
+        expired_keys = [
+            k for k, v in self._memory_rate_limit.items()
+            if time.time() - v['timestamp'] > self.time_window
+        ]
+        for k in expired_keys:
+            del self._memory_rate_limit[k]
+        
+        # 检查当前窗口的请求数
+        if key not in self._memory_rate_limit:
+            self._memory_rate_limit[key] = {'count': 1, 'timestamp': current_time}
+            return True
+        
+        if self._memory_rate_limit[key]['count'] >= rate_limit:
+            return False
+        
+        self._memory_rate_limit[key]['count'] += 1
+        return True
+    
+    async def _get_remaining_requests(self, redis_client, client_id: str, rate_limit: int) -> int:
+        """
+        获取剩余请求数
+        """
+        if not redis_client:
+            return rate_limit
+        
+        try:
+            import time
+            current_time = int(time.time())
+            window_start = current_time - (current_time % self.time_window)
+            key = f"{client_id}:{window_start}"
+            
+            current_count = await redis_client.get(key)
+            if current_count is None:
+                return rate_limit
+            
+            return max(0, rate_limit - int(current_count))
+        except:
+            return rate_limit
     
     
 class FullRequestLoggerMiddleware(BaseHTTPMiddleware):
