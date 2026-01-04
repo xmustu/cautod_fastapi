@@ -18,13 +18,14 @@ from tortoise.transactions import in_transaction
 
 from core.authentication import get_current_active_user, User
 from core.permissions import get_user_with_role
+from core.system_config import check_task_limit, check_maintenance_mode
 from database.models import Tasks, Conversations, GeometryResults, OptimizationResults, UserRole
 from apps.routes.chat import save_message_to_redis, save_or_update_message_in_redis
 from apps.geometry import  DifyClient
 from apps.geometry import geometry_stream_generator
 from apps.retrieval import retrieval_stream_generator
 from apps.optimize import optimize_stream_generator
-from apps.optimize import AlgorithmClient, create_task_monitor_callback, write_key
+from apps.optimize import AlgorithmClient, write_key
 # from apps.celery_tasks import celery_app  # 新增：导入 celery app
 from configs.celery_utils import celery
 from apps.celery_tasks import celery_optimize_task
@@ -127,7 +128,7 @@ async def get_tasks(
 
 @router.get("/pending", response_model=List[PendingTaskResponse], summary="获取所有待处理的任务")
 async def get_pending_tasks(
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     获取当前用户所有状态为 'pending' 的任务，并按创建时间升序排列。
@@ -154,7 +155,7 @@ async def get_pending_tasks(
 async def create_task(
     request: Request,
     task_data: TaskCreateRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     #print("task_data: ", task_data)
     #redis_client = request.app.state.redis
@@ -163,6 +164,9 @@ async def create_task(
     
     此接口是所有工作流程的第一步，用于在数据库中生成一个唯一的任务记录。
     """
+    # 检查用户任务数量限制
+    await check_task_limit(current_user.user_id)
+    
     # 验证 conversation_id 是否存在且属于当前用户
     conversation = await Conversations.get_or_none(
         conversation_id=task_data.conversation_id, 
@@ -212,7 +216,7 @@ async def create_task(
 async def execute_task(
     global_request: Request,  # 使用全局请求对象
     request: TaskExecuteRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     try:
         # print("request.file_url: ", request.file_url)
@@ -484,7 +488,7 @@ async def execute_task(
 @router.post("/optimize/submit-params", summary="提交优化参数")
 async def submit_optimization_params(
     request_data: OptimizationParamsRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     接收前端提交的优化参数，并打印。
@@ -533,68 +537,201 @@ async def submit_optimization_params(
 
 @router.get("/optimize/progress/{task_id}")
 async def optimize_progress_sse(task_id: str):
+    """
+    优化进度SSE接口
+    流程：
+    1. 检查参数是否已提交
+    2. 如果已提交，启动优化任务
+    3. 轮询Redis获取仿真结果并推送
+    """
     async def event_generator():
         import asyncio
         import json
-        import redis as redis_sync
-
-        r = redis_sync.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=settings.REDIS_DB, decode_responses=True)
-        channel = f"optimize_events:{task_id}"
-        pubsub = r.pubsub(ignore_subscribe_messages=True)
-        pubsub.subscribe(channel)
-
-        queue_key = "optimize_queue"
-        last_pos = None
+        import redis.asyncio as redis_async
+        from apps.optimize import AlgorithmClient, OptimizationConfig
+        from database.models import Tasks, OptimizationResults
+        from apps.routes.chat import save_or_update_message_in_redis
+        from apps.schemas import Message, SSETextChunk, SSEResponse, GenerationMetadata
+        
+        r_async = redis_async.Redis(
+            host=settings.REDIS_HOST, 
+            port=settings.REDIS_PORT, 
+            db=settings.REDIS_DB, 
+            decode_responses=True
+        )
+        
+        algorithm_client = None
+        optimization_started = False
+        
         try:
-            while True:
-                # 1) 优先读取 pubsub（worker 运行时会发布 started / chunks / finished）
-                msg = pubsub.get_message(timeout=1)
-                if msg and msg.get("type") == "message":
-                    data = msg["data"]
-                    if isinstance(data, (bytes, bytearray)):
-                        try:
-                            data = data.decode("utf-8")
-                        except Exception:
-                            data = str(data)
-                    # 如果是 JSON 描述事件，按 SSE data 发送
-                    try:
-                        payload = json.loads(data)
-                        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                        # 收到结束/失败事件则关闭连接
-                        if payload.get("event") in ("message_end", "finished", "failed"):
-                            break
-                    except Exception:
-                        # 不是 JSON，则按原样或包装为 data:
-                        if data.startswith("event:") or data.startswith("data:"):
-                            yield data if data.endswith("\n\n") else data + "\n\n"
-                        else:
-                            yield f"data: {data}\n\n"
-                    await asyncio.sleep(0)  # 让出控制权，继续循环
-                    continue
-
-                # 2) 如果没有 pubsub 消息，周期性检查队列位置（任务还未开始时）
-                try:
-                    queue = r.lrange(queue_key, 0, -1)
-                    if str(task_id) in queue:
-                        pos = queue.index(str(task_id)) + 1
-                    else:
-                        pos = 0
-                except Exception:
-                    pos = -1
-
-                if pos != last_pos:
-                    # 发送自定义事件 queue_update，前端可监听 "queue_update"
-                    payload = {"position": pos}
-                    yield f"event: queue_update\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                    last_pos = pos
-
-                # 小延迟避免忙循环
-                await asyncio.sleep(0.2)
-        finally:
+            # 获取任务信息
+            task = await Tasks.get_or_none(task_id=task_id)
+            if not task:
+                yield f'event: error\ndata: {json.dumps({"error": "Task not found"})}\n\n'
+                return
+            
+            # 获取优化结果以获取模型路径
+            optimization_result = await OptimizationResults.get_or_none(task_id=task_id)
+            if not optimization_result:
+                yield f'event: error\ndata: {json.dumps({"error": "Optimization result not found"})}\n\n'
+                return
+            
+            model_path = optimization_result.optimized_cad_file_path
+            model_dir = Path(model_path).parent if model_path else Path(".")
+            params_file = model_dir / "parameters.txt"
+            
+            # 7. 等待前端提交参数
+            max_wait_time = 300  # 最多等待5分钟
+            wait_start = time.time()
+            
+            while not params_file.exists():
+                if time.time() - wait_start > max_wait_time:
+                    yield f'event: error\ndata: {json.dumps({"error": "Timeout waiting for parameters"})}\n\n'
+                    return
+                await asyncio.sleep(1)  # 每秒检查一次
+            
+            # 8. 读取用户提交的参数并启动优化任务
             try:
-                pubsub.unsubscribe(channel)
-                pubsub.close()
-            except Exception:
+                with open(params_file, "r", encoding="utf-8") as f:
+                    params_data = json.load(f)
+            except Exception as e:
+                yield f'event: error\ndata: {json.dumps({"error": f"Failed to read parameters: {str(e)}"})}\n\n'
+                return
+            
+            # 解析参数
+            lower_bounds = {}
+            upper_bounds = {}
+            simulation_type = "StressSimulation"
+            max_stress = 2.5e8
+            max_volume = None
+            
+            for param_name, param_info in params_data.items():
+                if isinstance(param_info, dict):
+                    if "min" in param_info:
+                        lower_bounds[param_name] = float(param_info["min"])
+                    if "max" in param_info:
+                        upper_bounds[param_name] = float(param_info["max"])
+                    if "simulation_type" in param_info:
+                        simulation_type = param_info["simulation_type"]
+                    if "max_stress" in param_info:
+                        max_stress = float(param_info["max_stress"])
+                    if "max_volume" in param_info:
+                        max_volume = float(param_info["max_volume"])
+            
+            if not lower_bounds or not upper_bounds:
+                yield f'event: error\ndata: {json.dumps({"error": "Invalid parameters: missing bounds"})}\n\n'
+                return
+            
+            # 创建算法客户端
+            algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
+            
+            # 构建优化配置
+            optimization_config = OptimizationConfig(
+                task_id=str(task_id),
+                model_path=model_path,
+                simulation_type=simulation_type,
+                population_size=10,  # 可以从参数中读取
+                num_generations=10,  # 可以从参数中读取
+                lower_bounds=lower_bounds,
+                upper_bounds=upper_bounds,
+                max_stress=max_stress if simulation_type == "StressSimulation" else None,
+                max_volume=max_volume if simulation_type == "FlowSimulation" else None
+            )
+            
+            # 启动优化任务
+            task_status = await algorithm_client.start_optimization(optimization_config)
+            task.status = task_status.status
+            await task.save()
+            optimization_started = True
+            
+            yield f'event: optimization_started\ndata: {json.dumps({"task_id": task_id, "status": task_status.status})}\n\n'
+            
+            # 9. 轮询Redis获取仿真结果并推送
+            last_generation = -1
+            processed_evaluations = set()
+            
+            while True:
+                # 检查任务状态
+                status_data = await algorithm_client.get_optimization_status(str(task_id))
+                
+                if status_data.status == "completed":
+                    # 任务完成，获取最终结果
+                    result = await algorithm_client.get_optimization_result(str(task_id))
+                    
+                    result_text = f"\n\n优化任务已完成！\n最佳适应度: {result.get('best_fitness', 'N/A')}\n"
+                    text_chunk_data = SSETextChunk(text=result_text)
+                    yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                    
+                    # 发送完成事件
+                    final_metadata = GenerationMetadata(
+                        cad_file=model_path,
+                        code_file="",
+                        preview_image=None
+                    )
+                    final_response_data = SSEResponse(
+                        answer=result_text,
+                        metadata=final_metadata
+                    )
+                    yield f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
+                    break
+                    
+                elif status_data.status == "failed":
+                    error_msg = status_data.message or "优化任务失败"
+                    error_text = f"\n\n**任务执行出错**: {error_msg}\n"
+                    text_chunk_data = SSETextChunk(text=error_text)
+                    yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                    yield f'event: error\ndata: {json.dumps({"error": error_msg})}\n\n'
+                    break
+                
+                # 获取优化进度数据
+                progress = await algorithm_client.get_optimization_progress(str(task_id))
+                
+                # 处理新的一代数据
+                if progress.current_generation > last_generation:
+                    for gen_data in progress.data:
+                        if gen_data.generation > last_generation:
+                            # 发送新的一代数据
+                            gen_text = f"第 {gen_data.generation} 代，排名 {gen_data.rank}，适应度: {gen_data.fitness:.6e}"
+                            if gen_data.cv > 0:
+                                gen_text += f"，约束违反: {gen_data.cv:.2e}"
+                            gen_text += "\n"
+                            
+                            text_chunk_data = SSETextChunk(text=gen_text)
+                            yield f'event: text_chunk\ndata: {text_chunk_data.model_dump_json()}\n\n'
+                    
+                    last_generation = progress.current_generation
+                
+                # 处理实时评估数据
+                try:
+                    eval_list = await r_async.lrange(f"task:{task_id}:evaluations", 0, -1)
+                    for eval_item in eval_list:
+                        eval_data = json.loads(eval_item)
+                        eval_id = eval_data.get("eval_id")
+                        if eval_id and eval_id not in processed_evaluations:
+                            processed_evaluations.add(eval_id)
+                            # 可以在这里发送实时评估数据
+                            pass
+                except Exception as e:
+                    print(f"读取评估数据出错: {e}")
+                
+                # 等待一段时间后再次检查
+                await asyncio.sleep(2)
+                
+        except Exception as e:
+            print(f"Error in optimize_progress_sse: {e}")
+            import traceback
+            traceback.print_exc()
+            yield f'event: error\ndata: {json.dumps({"error": str(e)})}\n\n'
+        finally:
+            if algorithm_client:
+                try:
+                    await algorithm_client.close()
+                except:
+                    pass
+            try:
+                await r_async.close()
+                await r_async.connection_pool.disconnect()
+            except:
                 pass
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
