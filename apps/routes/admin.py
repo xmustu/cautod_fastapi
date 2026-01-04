@@ -145,7 +145,7 @@ async def get_system_stats(
     
     # 获取系统资源信息
     system_resources = get_system_resources()
-    
+    print("system_resources: ",system_resources)
     return SystemStats(
         total_users=total_users,
         total_tasks=total_tasks,
@@ -645,12 +645,19 @@ async def get_system_config(
     
     if db_config:
         # 数据库中有配置，直接返回
+        # 注意：enable_email_notifications 和 enable_email_verification 同步
+        email_notifications = getattr(db_config, 'enable_email_notifications', db_config.enable_email_verification)
         return SystemConfig(
             max_tasks_per_user=db_config.max_tasks_per_user,
             max_conversations_per_user=db_config.max_conversations_per_user,
             enable_registration=db_config.enable_registration,
             enable_email_verification=db_config.enable_email_verification,
-            maintenance_mode=db_config.maintenance_mode
+            enable_email_notifications=email_notifications,
+            maintenance_mode=db_config.maintenance_mode,
+            max_file_size_mb=getattr(db_config, 'max_file_size_mb', 100),
+            api_rate_limit=getattr(db_config, 'api_rate_limit', 100),
+            session_timeout_minutes=getattr(db_config, 'session_timeout_minutes', 60),
+            default_user_role=getattr(db_config, 'default_user_role', 'user')
         )
     else:
         # 数据库中没有配置，从配置文件读取默认值并初始化
@@ -659,7 +666,12 @@ async def get_system_config(
             max_conversations_per_user=settings.SYSTEM_MAX_CONVERSATIONS_PER_USER,
             enable_registration=settings.SYSTEM_ENABLE_REGISTRATION,
             enable_email_verification=settings.SYSTEM_ENABLE_EMAIL_VERIFICATION,
-            maintenance_mode=settings.SYSTEM_MAINTENANCE_MODE
+            enable_email_notifications=settings.SYSTEM_ENABLE_EMAIL_NOTIFICATIONS,
+            maintenance_mode=settings.SYSTEM_MAINTENANCE_MODE,
+            max_file_size_mb=settings.SYSTEM_MAX_FILE_SIZE_MB,
+            api_rate_limit=settings.SYSTEM_API_RATE_LIMIT,
+            session_timeout_minutes=settings.SYSTEM_SESSION_TIMEOUT_MINUTES,
+            default_user_role=settings.SYSTEM_DEFAULT_USER_ROLE
         )
         
         # 将默认配置保存到数据库
@@ -668,13 +680,18 @@ async def get_system_config(
             max_conversations_per_user=default_config.max_conversations_per_user,
             enable_registration=default_config.enable_registration,
             enable_email_verification=default_config.enable_email_verification,
-            maintenance_mode=default_config.maintenance_mode
+            enable_email_notifications=default_config.enable_email_notifications,
+            maintenance_mode=default_config.maintenance_mode,
+            max_file_size_mb=default_config.max_file_size_mb,
+            api_rate_limit=default_config.api_rate_limit,
+            session_timeout_minutes=default_config.session_timeout_minutes,
+            default_user_role=default_config.default_user_role
         )
         
         return default_config
 
 
-@admin_router.put("/config", summary="更新系统配置", response_model=AdminResponse)
+@admin_router.post("/config", summary="更新系统配置", response_model=AdminResponse)
 async def update_system_config(
     config: SystemConfig,
     current_user: User = Depends(require_admin)
@@ -683,26 +700,52 @@ async def update_system_config(
     更新系统配置
     - 更新数据库中的配置记录
     - 如果数据库中没有配置，则创建新记录
+    - 注意：enable_email_notifications 和 enable_email_verification 会同步更新
     """
     # 获取或创建配置记录（单例模式，只保留一条记录）
     db_config = await SystemConfigModel.first()
     
+    # 处理 enable_email_notifications 和 enable_email_verification 的同步
+    # 如果前端传了 enable_email_notifications，用它来更新 enable_email_verification
+    email_verification = config.enable_email_verification
+    if config.enable_email_notifications is not None:
+        email_verification = config.enable_email_notifications
+    
     if db_config:
-        # 更新现有配置
-        db_config.max_tasks_per_user = config.max_tasks_per_user
-        db_config.max_conversations_per_user = config.max_conversations_per_user
-        db_config.enable_registration = config.enable_registration
-        db_config.enable_email_verification = config.enable_email_verification
-        db_config.maintenance_mode = config.maintenance_mode
+        # 更新现有配置（使用 getattr 兼容可能不存在的字段）
+        if config.max_tasks_per_user is not None:
+            db_config.max_tasks_per_user = config.max_tasks_per_user
+        if config.max_conversations_per_user is not None:
+            db_config.max_conversations_per_user = config.max_conversations_per_user
+        if config.enable_registration is not None:
+            db_config.enable_registration = config.enable_registration
+        db_config.enable_email_verification = email_verification
+        if hasattr(db_config, 'enable_email_notifications'):
+            db_config.enable_email_notifications = config.enable_email_notifications if config.enable_email_notifications is not None else email_verification
+        if config.maintenance_mode is not None:
+            db_config.maintenance_mode = config.maintenance_mode
+        if hasattr(db_config, 'max_file_size_mb'):
+            db_config.max_file_size_mb = config.max_file_size_mb if config.max_file_size_mb is not None else db_config.max_file_size_mb
+        if hasattr(db_config, 'api_rate_limit'):
+            db_config.api_rate_limit = config.api_rate_limit if config.api_rate_limit is not None else db_config.api_rate_limit
+        if hasattr(db_config, 'session_timeout_minutes'):
+            db_config.session_timeout_minutes = config.session_timeout_minutes if config.session_timeout_minutes is not None else db_config.session_timeout_minutes
+        if hasattr(db_config, 'default_user_role'):
+            db_config.default_user_role = config.default_user_role if config.default_user_role else db_config.default_user_role
         await db_config.save()
     else:
         # 创建新配置记录
         await SystemConfigModel.create(
-            max_tasks_per_user=config.max_tasks_per_user,
-            max_conversations_per_user=config.max_conversations_per_user,
-            enable_registration=config.enable_registration,
-            enable_email_verification=config.enable_email_verification,
-            maintenance_mode=config.maintenance_mode
+            max_tasks_per_user=config.max_tasks_per_user or 100,
+            max_conversations_per_user=config.max_conversations_per_user or 50,
+            enable_registration=config.enable_registration if config.enable_registration is not None else True,
+            enable_email_verification=email_verification,
+            enable_email_notifications=config.enable_email_notifications if config.enable_email_notifications is not None else email_verification,
+            maintenance_mode=config.maintenance_mode if config.maintenance_mode is not None else False,
+            max_file_size_mb=config.max_file_size_mb or 100,
+            api_rate_limit=config.api_rate_limit or 100,
+            session_timeout_minutes=config.session_timeout_minutes or 60,
+            default_user_role=config.default_user_role or 'user'
         )
     
     return AdminResponse(

@@ -183,7 +183,12 @@ class SystemConfig(BaseModel):
     max_conversations_per_user: Optional[int] = 50
     enable_registration: Optional[bool] = True
     enable_email_verification: Optional[bool] = False
+    enable_email_notifications: Optional[bool] = False  # 邮件通知（前端使用）
     maintenance_mode: Optional[bool] = False
+    max_file_size_mb: Optional[int] = 100  # 最大上传文件大小(MB)
+    api_rate_limit: Optional[int] = 100  # API请求限制(次/分钟)
+    session_timeout_minutes: Optional[int] = 60  # 会话超时时间(分钟)
+    default_user_role: Optional[str] = "user"  # 默认用户角色: user/premium
 
 
 # ============================================
