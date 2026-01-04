@@ -123,3 +123,23 @@ class ErrorLogs(Model):
     class Meta:
         table = "error_logs"
         #indexes = [("idx_task_id", ["task_id"])]
+
+
+# 系统配置模型（单例模式，只存储一条记录）
+class SystemConfig(Model):
+    config_id = fields.IntField(pk=True, auto_increment=True)
+    max_tasks_per_user = fields.IntField(default=100, description="每个用户最大任务数")
+    max_conversations_per_user = fields.IntField(default=50, description="每个用户最大会话数")
+    enable_registration = fields.BooleanField(default=True, description="是否启用注册")
+    enable_email_verification = fields.BooleanField(default=True, description="是否启用邮箱验证")
+    enable_email_notifications = fields.BooleanField(default=True, description="是否启用邮件通知")
+    maintenance_mode = fields.BooleanField(default=False, description="是否维护模式")
+    max_file_size_mb = fields.IntField(default=100, description="最大上传文件大小(MB)")
+    api_rate_limit = fields.IntField(default=100, description="API请求限制(次/分钟)")
+    session_timeout_minutes = fields.IntField(default=60, description="会话超时时间(分钟)")
+    default_user_role = fields.CharField(max_length=20, default="user", description="默认用户角色")
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "system_config"
