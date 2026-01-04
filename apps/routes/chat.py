@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 
 import redis.asyncio as aioredis
 from core.authentication import get_current_active_user, User
+from core.system_config import check_maintenance_mode
 from database.models import Tasks
 from apps.schemas import SSETextChunk, SSEResponse
 from apps.schemas import Message
@@ -169,7 +170,7 @@ async def get_task_history(
     request: Request,
     #user_id: str = Query(..., description="用户ID"),
     task_id: str = Query(..., description="任务ID"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(check_maintenance_mode),
 ):
     redis_client = request.app.state.redis
     """获取对话历史记录"""
@@ -189,7 +190,7 @@ async def get_task_history(
 async def get_user_history(
     request: Request,
     #user_id: str = Query(..., description="用户ID"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(check_maintenance_mode),
 ):
     redis_client = request.app.state.redis
     """
@@ -253,7 +254,7 @@ async def delete_task(
     request: Request,
     task_id: str, 
     #user_id:str = Query(..., description="用户ID"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(check_maintenance_mode),
 ):
     redis_client = request.app.state.redis
     try:
@@ -282,7 +283,7 @@ async def clear_task_history(
     request: Request,
     task_id: str, 
     #user_id: str = Query(..., description="用户ID"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(check_maintenance_mode),
 ):
     redis_client = request.app.state.redis
     """清除指定任务的对话历史，但保留任务记录"""

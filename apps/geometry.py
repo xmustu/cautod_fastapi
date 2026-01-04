@@ -15,6 +15,7 @@ import asyncio
 from database.models import Conversations
 from core.authentication import get_current_active_user
 from core.authentication import User
+from core.system_config import check_conversation_limit, check_maintenance_mode
 from database.models import Tasks
 from apps.routes.chat import save_or_update_message_in_redis
 from database.models import Tasks, Conversations, GeometryResults
@@ -184,6 +185,7 @@ async def geometry_stream_generator(
         
         # 4. 发送包含完整元数据的结束消息
         geometry_result = await GeometryResults.get_or_none(task_id=task.task_id)
+        print("Geometry Result: ", geometry_result)
         if geometry_result:
             final_metadata = GenerationMetadata(
                     cad_file="model.step",
@@ -228,7 +230,15 @@ async def geometry_stream_generator(
 
         assistant_message.metadata = final_metadata.model_dump()
 
-
+        # 约 218 行插入以下代码:
+        print("\n--- DEBUG: Final Data Inputs ---")
+        print(f"Full Answer Type: {type(full_answer)}")
+        print(f"Full Answer Content (First 100 chars): {''.join(full_answer)[:100]}")
+        print(f"Suggested Questions Type: {type(suggested_questions)}")
+        print(f"Suggested Questions Content: {suggested_questions}")
+        print(f"Final Metadata Type: {type(final_metadata)}")
+        print(f"Final Metadata Content: {final_metadata.model_dump()}")
+        print("--- END DEBUG ---\n")
         final_response_data = SSEResponse(
             answer=''.join(full_answer),
             suggested_questions=suggested_questions,
@@ -237,8 +247,15 @@ async def geometry_stream_generator(
         
         sse_final = f'event: message_end\ndata: {final_response_data.model_dump_json()}\n\n'
         yield sse_final
-
-
+        
+        # 🚨 修复后的代码：使用 Pydantic 的 .model_dump() 将对象转换为字典再打印
+        print("---------------------------------------")
+        print("Final message_end JSON Payload:")
+        # import json
+        # 使用 .model_dump() 转换为字典，再用 json.dumps 美化打印
+        print(json.dumps(final_response_data.model_dump(), indent=4)) 
+        print("---------------------------------------")
+        # 这里的 final_response_data.model_dump() 应该修复 JSON 序列化错误。
         # 6. 保存结构化的助手消息到Redis,最后一次更新Redis，状态为 "done"
         assistant_message.status = "done"
         assistant_message.timestamp = datetime.now()
@@ -480,11 +497,14 @@ async def geometry_home():
 @geometry.post("/conversation", response_model=ConversationResponse)
 async def create_conversation(
     request: ConversationCreateRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(check_maintenance_mode)
 ):
     """
     创建一个新的会话并将其存储在数据库中。
     """
+    # 检查用户会话数量限制
+    await check_conversation_limit(current_user.user_id)
+    
     conversation_id = str(uuid.uuid4())
     conversation = await Conversations.create(
         conversation_id=conversation_id,

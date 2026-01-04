@@ -163,11 +163,11 @@ class EmailVerificationCodeRequest(BaseModel):
 
 class EmailRegisterRequest(UserRegisterRequest):
     """邮箱验证码注册请求"""
-    verification_code: str | None = None
+    verification_code: Optional[str] = None
 
     @field_validator("verification_code")
     @classmethod
-    def validate_verification_code(cls, value: str | None) -> str | None:
+    def validate_verification_code(cls, value: Optional[str]) -> Optional[str]:
         if value in (None, ""):
             return None
         if not value.isdigit():
