@@ -26,20 +26,21 @@ from core.permissions import require_admin
 from core.hashing import Hasher
 from config import settings
 import math
+import aiohttp
 
-# 尝试导入系统监控库
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
+# 尝试导入系统监控库（已废弃，改为从 optimize 服务获取）
+# try:
+#     import psutil
+#     PSUTIL_AVAILABLE = True
+# except ImportError:
+#     PSUTIL_AVAILABLE = False
 
-# 尝试导入 GPU 监控库
-try:
-    import pynvml
-    PYNVML_AVAILABLE = True
-except ImportError:
-    PYNVML_AVAILABLE = False
+# 尝试导入 GPU 监控库（已废弃，改为从 optimize 服务获取）
+# try:
+#     import pynvml
+#     PYNVML_AVAILABLE = True
+# except ImportError:
+#     PYNVML_AVAILABLE = False
 
 
 admin_router = APIRouter(prefix="/admin", tags=["管理员"])
@@ -49,10 +50,13 @@ admin_router = APIRouter(prefix="/admin", tags=["管理员"])
 # 系统资源监控辅助函数
 # ============================================
 
-def get_system_resources() -> Dict:
+async def get_system_resources() -> Dict:
     """
-    获取系统资源使用情况
+    从 optimize 服务获取系统资源使用情况
     返回 CPU、内存、GPU 等信息
+    
+    注意：由于后端运行在 Docker 容器中，无法直接获取宿主机资源信息，
+    因此改为从运行在 Windows 主机上的 optimize 服务间接获取
     """
     resources = {
         "cpu_usage": None,
@@ -67,49 +71,88 @@ def get_system_resources() -> Dict:
         "gpu_count": None,
     }
     
-    # 获取 CPU 和内存信息
-    if PSUTIL_AVAILABLE:
-        try:
-            # CPU 信息
-            resources["cpu_usage"] = round(psutil.cpu_percent(interval=0.1), 2)
-            resources["cpu_cores"] = psutil.cpu_count(logical=False)  # 物理核心数
-            if resources["cpu_cores"] is None:
-                resources["cpu_cores"] = psutil.cpu_count(logical=True)  # 逻辑核心数
-            
-            # 内存信息
-            memory = psutil.virtual_memory()
-            resources["memory_usage"] = round(memory.percent, 2)
-            resources["memory_total"] = round(memory.total / (1024 * 1024))  # MB
-            resources["memory_used"] = round(memory.used / (1024 * 1024))  # MB
-            resources["memory_available"] = round(memory.available / (1024 * 1024))  # MB
-        except Exception as e:
-            # 如果获取失败，保持 None 值
-            pass
-    
-    # 获取 GPU 信息（NVIDIA）
-    if PYNVML_AVAILABLE:
-        try:
-            pynvml.nvmlInit()
-            gpu_count = pynvml.nvmlDeviceGetCount()
-            resources["gpu_count"] = gpu_count
-            
-            if gpu_count > 0:
-                # 获取第一个 GPU 的信息（可以扩展为多个 GPU）
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                
-                # GPU 使用率
-                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                resources["gpu_usage"] = round(util.gpu, 2)
-                
-                # GPU 显存信息
-                mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                resources["gpu_memory_used"] = round(mem_info.used / (1024 * 1024))  # MB
-                resources["gpu_memory_total"] = round(mem_info.total / (1024 * 1024))  # MB
-        except Exception as e:
-            # 如果获取失败，保持 None 值
-            pass
+    # 从 optimize 服务获取资源信息
+    try:
+        optimize_url = f"{settings.OPTIMIZE_API_URL}/system/resources"
+        print(f"[系统资源] 正在从 optimize 服务获取资源信息: {optimize_url}")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(optimize_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    resources = await resp.json()
+                    print(f"[系统资源] ✓ 成功获取资源信息")
+                else:
+                    print(f"[系统资源] ✗ 获取失败，状态码: {resp.status}")
+    except aiohttp.ClientError as e:
+        print(f"[系统资源] ✗ 连接 optimize 服务失败: {type(e).__name__}: {e}")
+    except Exception as e:
+        print(f"[系统资源] ✗ 获取资源信息时出错: {type(e).__name__}: {e}")
     
     return resources
+
+
+# 旧的本地获取方法（已废弃）
+# def get_system_resources() -> Dict:
+#     """
+#     获取系统资源使用情况
+#     返回 CPU、内存、GPU 等信息
+#     """
+#     resources = {
+#         "cpu_usage": None,
+#         "cpu_cores": None,
+#         "memory_usage": None,
+#         "memory_total": None,
+#         "memory_used": None,
+#         "memory_available": None,
+#         "gpu_usage": None,
+#         "gpu_memory_used": None,
+#         "gpu_memory_total": None,
+#         "gpu_count": None,
+#     }
+    
+#     # 获取 CPU 和内存信息
+#     if PSUTIL_AVAILABLE:
+#         try:
+#             # CPU 信息
+#             resources["cpu_usage"] = round(psutil.cpu_percent(interval=0.1), 2)
+#             resources["cpu_cores"] = psutil.cpu_count(logical=False)  # 物理核心数
+#             if resources["cpu_cores"] is None:
+#                 resources["cpu_cores"] = psutil.cpu_count(logical=True)  # 逻辑核心数
+            
+    #         # 内存信息
+    #         memory = psutil.virtual_memory()
+    #         resources["memory_usage"] = round(memory.percent, 2)
+    #         resources["memory_total"] = round(memory.total / (1024 * 1024))  # MB
+    #         resources["memory_used"] = round(memory.used / (1024 * 1024))  # MB
+    #         resources["memory_available"] = round(memory.available / (1024 * 1024))  # MB
+    #     except Exception as e:
+    #         # 如果获取失败，保持 None 值
+    #         pass
+    
+    # # 获取 GPU 信息（NVIDIA）
+    # if PYNVML_AVAILABLE:
+    #     try:
+    #         pynvml.nvmlInit()
+    #         gpu_count = pynvml.nvmlDeviceGetCount()
+    #         resources["gpu_count"] = gpu_count
+            
+    #         if gpu_count > 0:
+    #             # 获取第一个 GPU 的信息（可以扩展为多个 GPU）
+    #             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                
+    #             # GPU 使用率
+    #             util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+    #             resources["gpu_usage"] = round(util.gpu, 2)
+                
+    #             # GPU 显存信息
+    #             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    #             resources["gpu_memory_used"] = round(mem_info.used / (1024 * 1024))  # MB
+    #             resources["gpu_memory_total"] = round(mem_info.total / (1024 * 1024))  # MB
+    #     except Exception as e:
+    #         # 如果获取失败，保持 None 值
+    #         pass
+    
+    # return resources
 
 
 # ============================================
@@ -144,7 +187,7 @@ async def get_system_stats(
     tasks_today = await Tasks.filter(created_at__gte=today_start).count()
     
     # 获取系统资源信息
-    system_resources = get_system_resources()
+    system_resources = await get_system_resources()
     print("system_resources: ",system_resources)
     return SystemStats(
         total_users=total_users,
