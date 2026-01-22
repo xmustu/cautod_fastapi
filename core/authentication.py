@@ -11,22 +11,13 @@ from pydantic import BaseModel
 from jwt.exceptions import InvalidTokenError
 from typing import Optional
 
+from config import settings
 
-SECRET_KEY = "2703d9889343165118045a6fae0d1f42b3ee721ae803063dbea52a36fe92ede8"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-ACCESS_TOKEN_EXPIRE_DAYS = 7
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+ACCESS_TOKEN_EXPIRE_DAYS = settings.ACCESS_TOKEN_EXPIRE_DAYS
 
-
-class Token(BaseModel):
-    status: str
-    token : str
-
-class User(BaseModel):
-    user_id: int
-    email: str
-    created_at: datetime
-    role: Optional[str] = "user"  # 添加角色字段
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 

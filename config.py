@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     STATIC_DIR:str 
     STATIC_URL:str 
     STATIC_NAME:str 
+
+    SECRET_KEY :str
+    ALGORITHM :str
+    ACCESS_TOKEN_EXPIRE_MINUTES :int
+    ACCESS_TOKEN_EXPIRE_DAYS :int
+
     SQLMODE: str
     MYSQL_HOST:str = "240e:3bc:266:b4d0:8ed2:275a:f1a9:7b4d"
     MYSQL_PORT:str = '3306'
@@ -89,9 +95,9 @@ class Settings(BaseSettings):
     SYSTEM_SESSION_TIMEOUT_MINUTES: int = 60
     SYSTEM_DEFAULT_USER_ROLE: str = "user"
     
-    model_config = SettingsConfigDict(env_file=".env.prod")
+    model_config = SettingsConfigDict(env_file=".env.dev")
 
-    # class Settings:
+    # class Settings:dev
     #     env_file = ".env"
 
 
