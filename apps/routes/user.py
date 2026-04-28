@@ -353,7 +353,7 @@ async def register(request: UserRegisterRequest):
     验证规则:
     - 用户名: 3-50字符, 支持字母/数字/下划线/中文, 不允许纯数字和保留名
     - 邮箱: 标准邮箱格式验证
-    - 密码: 8-128字符
+    - 密码: 8-128字符，需要达到中等强度以上（不硬性要求特定字符类型），不能使用常见弱密码
     """
     # 0. 检查系统是否允许注册
     await check_registration_enabled()
@@ -376,6 +376,36 @@ async def register(request: UserRegisterRequest):
                 "error": "email_exists",
                 "message": "该邮箱已被注册",
                 "field": "email"
+            }
+        )
+    
+    # 2.5. 密码强度验证（Pydantic 验证器已处理，这里进行额外验证和反馈）
+    from core.password_validator import PasswordValidator, PasswordStrength
+    
+    is_valid, errors, strength = PasswordValidator.validate_password_strength(
+        password=request.password,
+        min_length=8,
+        min_strength=PasswordStrength.MEDIUM,  # 最低要求中等强度
+        max_length=128,
+        check_common_passwords=True,
+        check_sequential=True,
+        check_repeat=True
+    )
+    
+    if not is_valid:
+        # 如果验证失败，返回详细的错误信息
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "password_validation_failed",
+                "message": "密码不符合安全要求",
+                "field": "password",
+                "errors": errors,
+                "requirements": {
+                    "min_length": 8,
+                    "min_strength": "medium",  # 最低要求中等强度
+                    "description": "密码需要达到中等强度以上，不硬性要求特定字符类型"
+                }
             }
         )
     

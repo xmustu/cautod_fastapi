@@ -3,11 +3,11 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from apps.router import router
-from apps.user import user
+from cautod_fastapi.apps.routes.router import router
+from cautod_fastapi.apps.routes.user import user
 from apps.geometry import geometry
 from apps.optimize import optimize
-from apps.tasks import router as tasks_router
+from cautod_fastapi.apps.routes.tasks import router as tasks_router
 
 from core.middleware import count_time_middleware, request_response_middleware
 from tortoise.contrib.fastapi import register_tortoise

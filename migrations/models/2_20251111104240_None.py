@@ -9,6 +9,13 @@ async def upgrade(db: BaseDBAsyncClient) -> str:
     `title` VARCHAR(255) NOT NULL DEFAULT '新会话',
     `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 ) CHARACTER SET utf8mb4;
+CREATE TABLE IF NOT EXISTS `error_logs` (
+    `error_id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    `task_id` INT NOT NULL,
+    `error_message` LONGTEXT NOT NULL,
+    `error_type` VARCHAR(100),
+    `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+) CHARACTER SET utf8mb4;
 CREATE TABLE IF NOT EXISTS `geometry_results` (
     `geometry_id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
     `task_id` INT NOT NULL,
@@ -48,6 +55,7 @@ CREATE TABLE IF NOT EXISTS `users` (
     `username` VARCHAR(255) NOT NULL DEFAULT 'user',
     `email` VARCHAR(255) NOT NULL UNIQUE,
     `password_hash` VARCHAR(255) NOT NULL,
+    `role` VARCHAR(7) NOT NULL COMMENT '用户角色：user-普通用户, premium-高级用户, admin-管理员' DEFAULT 'user',
     `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 ) CHARACTER SET utf8mb4;
 CREATE TABLE IF NOT EXISTS `aerich` (

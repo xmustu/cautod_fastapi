@@ -8,6 +8,7 @@ import os
 import aiohttp
 from pathlib import Path
 from fastapi import APIRouter
+from starlette.requests import ClientDisconnect
 from fastapi import HTTPException
 from fastapi import Depends
 import uuid
@@ -64,6 +65,7 @@ geometry = APIRouter()
 
 
 async def geometry_stream_generator(
+        http_request,
         request: TaskExecuteRequest,
         current_user: User,
         redis_client,
@@ -128,7 +130,29 @@ async def geometry_stream_generator(
 
         
         full_answer = []
+        # 导入任务工具函数
+        from apps.task_utils import check_task_terminated, cancel_task_execution
+        
         async for chunk in client.chat_stream(dify_request):
+            if await http_request.is_disconnected():
+                await cancel_task_execution(task, redis_client, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
+                break
+            # 检查任务是否被终止
+            if await check_task_terminated(redis_client, request.task_id):
+                # 发送终止消息
+                assistant_message.content += "\n\n**任务已被用户终止**"
+                assistant_message.status = "cancelled"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+                # 更新任务状态
+                task.status = "cancelled"
+                await task.save()
+                # 发送终止事件
+                yield f'event: cancelled\ndata: {json.dumps({"task_id": str(request.task_id), "message": "任务已被用户终止"})}\n\n'
+                break
             
             # 关键：将字符串中的 \n 转义符替换为真正的换行控制字符
             formatted_chunk = chunk.replace("\\n", "\n")
@@ -286,6 +310,10 @@ async def geometry_stream_generator(
         #     )
 
         # await geometry_result.save()
+    except (asyncio.CancelledError, BrokenPipeError, ClientDisconnect):
+        from apps.task_utils import cancel_task_execution
+        await cancel_task_execution(task, redis_client, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
+        raise
     except Exception as e:
         # 任务失败，更新状态
         task.status = "failed"

@@ -17,7 +17,9 @@ from pydantic import BaseModel
 from pathlib import Path
 
 from core.authentication import authenticate
-from core.authentication import get_current_active_user, User
+from core.authentication import get_current_active_user
+# 修改后 (请直接复制)：
+from apps.schemas.user import UserResponse as User
 from core.permissions import PermissionChecker
 from core.system_config import check_file_size_async, check_maintenance_mode
 from database.models import *

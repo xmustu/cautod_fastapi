@@ -3,22 +3,21 @@ import json
 from datetime import datetime
 import os
 import time 
-
 import sys
 import uuid
 import redis as redis_sync
 import redis.asyncio as redis_async
 import asyncio
-
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from starlette.requests import ClientDisconnect
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 from tortoise.transactions import in_transaction
-
 from core.authentication import get_current_active_user, User
 from core.permissions import get_user_with_role
 from core.system_config import check_task_limit, check_maintenance_mode
+from core.permissions import PermissionChecker
 from database.models import Tasks, Conversations, GeometryResults, OptimizationResults, UserRole
 from apps.routes.chat import save_message_to_redis, save_or_update_message_in_redis
 from apps.geometry import  DifyClient
@@ -26,7 +25,6 @@ from apps.geometry import geometry_stream_generator
 from apps.retrieval import retrieval_stream_generator
 from apps.optimize import optimize_stream_generator
 from apps.optimize import AlgorithmClient, write_key
-# from apps.celery_tasks import celery_app  # 新增：导入 celery app
 from configs.celery_utils import celery
 from apps.celery_tasks import celery_optimize_task
 from config import settings
@@ -37,6 +35,8 @@ from apps.schemas import (
     PendingTaskResponse,
     TaskResponse,
     TaskListRequest,
+    TaskCancelResponse,
+    TaskCancelRequest,
 )
 from apps.schemas import (
     Message
@@ -55,24 +55,18 @@ from apps.schemas import (
     SSEImageChunk
 )
 from apps.schemas import MessageRequest
+from apps.task_utils import (
+    cancel_task_execution,
+    normalize_cancel_mode,
+    normalize_cancel_reason,
+    register_celery_task_mapping,
+)
 
 
 # 创建一个新的 APIRouter 实例
 router = APIRouter(
     tags=["任务管理"]
 )
-
-
-# # 依赖注入 - 提供算法客户端实例
-# async def get_algorithm_client():
-#     settings = Settings()
-#     client = AlgorithmClient(
-#         base_url=settings.OPTIMIZE_API_URL,
-#     )
-#     try:
-#         yield client
-#     finally:
-#         await client.close()
 
 
 # --- API 端点实现 ---
@@ -264,7 +258,7 @@ async def execute_task(
             #             detail=f"Task {running_optimize_task.task_id} is already running. Only one 'optimize' task can run at a time."
             #         )
 
-            # 更新任务状态为“处理中”
+            # 更新任务状态为"处理中"
 
                 task.status = "queued"
                 #print("通过optimize验证了吗")
@@ -311,6 +305,7 @@ async def execute_task(
             
             return StreamingResponse(
                 geometry_stream_generator(
+                    global_request,
                     request,
                     current_user,
                     redis_client,
@@ -324,6 +319,7 @@ async def execute_task(
         
             return StreamingResponse(
                 retrieval_stream_generator(
+                    global_request,
                     request,
                     current_user,
                     redis_client,
@@ -386,7 +382,8 @@ async def execute_task(
                 print("Failed to push task to optimize_queue:", e, file=sys.stderr)
             try:
             # 提交 Celery 任务（异步）
-                celery.send_task("optimize:celery_optimize_task", args=[celery_payload], kwargs={})
+                celery_result = celery.send_task("optimize:celery_optimize_task", args=[celery_payload], kwargs={})
+                await register_celery_task_mapping(r_async, task.task_id, celery_result.id)
             except Exception as e:
                 print("Failed to submit task to Celery:", e)
                     # 返回一个 SSE 流：先推送队列位置更新，并订阅 worker 发布的 channel
@@ -403,6 +400,15 @@ async def execute_task(
                     return
                 try:
                     while True:
+                        if await global_request.is_disconnected():
+                            await cancel_task_execution(
+                                task=task,
+                                redis_client=r_async,
+                                reason="page_leave",
+                                mode="graceful",
+                                actor_user_id=current_user.user_id,
+                            )
+                            break
                         # 1) 检查队列位置
                         # try:
                         #     queue = await r_async.lrange(queue_key, 0, -1)
@@ -439,6 +445,15 @@ async def execute_task(
                                 print("Failed to yield parse_pubsub_message error SSE:", e, file=sys.stderr)
                         # 小延迟避免忙循环
                         await asyncio.sleep(0.3)
+                except (asyncio.CancelledError, BrokenPipeError, ClientDisconnect):
+                    await cancel_task_execution(
+                        task=task,
+                        redis_client=r_async,
+                        reason="page_leave",
+                        mode="graceful",
+                        actor_user_id=current_user.user_id,
+                    )
+                    raise
                     # 最后确保取消订阅
                 finally:
                     try:
@@ -484,6 +499,116 @@ async def execute_task(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Task execution failed: {str(e)}"
         )
+
+async def _cancel_task_impl(
+    request: Request,
+    task_id: int,
+    body: TaskCancelRequest,
+    current_user: User = Depends(check_maintenance_mode)
+):
+    """
+    无条件终止正在运行的任务，释放后端资源，并通知功能模块做出终止响应。
+    
+    权限控制：
+    - 普通用户：只能终止自己的任务
+    - 管理员：可以终止任何任务
+    
+    支持的任务类型：
+    - optimize: Celery 异步任务
+    - geometry: 流式任务
+    - retrieval: 流式任务
+    
+    终止操作包括：
+    1. 检查任务状态（只能终止 running/queued 状态的任务）
+    2. 对于 Celery 任务，revoke 任务
+    3. 对于流式任务，通过 Redis 设置终止标志
+    4. 更新任务状态为 cancelled
+    5. 清理 Redis 中的相关数据
+    6. 通知功能模块终止任务（通过 Redis pub/sub）
+    """
+    # 检查用户是否为管理员
+    is_admin = await PermissionChecker.is_admin(current_user.email)
+    
+    # 获取任务
+    task = await Tasks.get_or_none(task_id=task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务不存在"
+        )
+    
+    # 权限验证：普通用户只能终止自己的任务
+    if not is_admin and task.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您没有权限终止此任务"
+        )
+    
+    reason = normalize_cancel_reason(body.reason)
+    mode = normalize_cancel_mode(body.mode)
+
+    r_async = None
+    try:
+        r_async = redis_async.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.REDIS_DB,
+            decode_responses=True
+        )
+        cancel_result = await cancel_task_execution(
+            task=task,
+            redis_client=r_async,
+            reason=reason,
+            mode=mode,
+            actor_user_id=current_user.user_id,
+        )
+        return TaskCancelResponse(
+            task_id=task_id,
+            status=cancel_result["status"],
+            message="任务已终止（幂等）" if cancel_result["already_cancelled"] else "任务已成功终止",
+            cancelled_at=datetime.now()
+        )
+        
+    except Exception as e:
+        print(f"终止任务时发生错误: {e}")
+        # 即使终止操作失败，也尝试更新任务状态
+        try:
+            task.status = "cancelled"
+            await task.save()
+        except:
+            pass
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"终止任务失败: {str(e)}"
+        )
+    finally:
+        if r_async:
+            try:
+                await r_async.close()
+                await r_async.connection_pool.disconnect()
+            except Exception:
+                pass
+
+
+@router.post("/{task_id}/cancel", response_model=TaskCancelResponse, summary="终止正在运行的任务（标准路径）")
+async def cancel_task_v2(
+    request: Request,
+    task_id: int,
+    body: TaskCancelRequest = TaskCancelRequest(),
+    current_user: User = Depends(check_maintenance_mode),
+):
+    return await _cancel_task_impl(request, task_id, body, current_user)
+
+
+@router.post("/cancel/{task_id}", response_model=TaskCancelResponse, summary="终止正在运行的任务（兼容路径）", deprecated=True)
+async def cancel_task_legacy(
+    request: Request,
+    task_id: int,
+    body: TaskCancelRequest = TaskCancelRequest(),
+    current_user: User = Depends(check_maintenance_mode),
+):
+    return await _cancel_task_impl(request, task_id, body, current_user)
 
 @router.post("/optimize/submit-params", summary="提交优化参数")
 async def submit_optimization_params(
@@ -651,6 +776,13 @@ async def optimize_progress_sse(task_id: str):
             processed_evaluations = set()
             
             while True:
+                # 检查任务是否被终止
+                terminate_key = f"task_terminate:{task_id}"
+                is_terminated = await r_async.get(terminate_key)
+                if is_terminated:
+                    yield f'event: cancelled\ndata: {json.dumps({"task_id": task_id, "message": "任务已被终止"})}\n\n'
+                    break
+                
                 # 检查任务状态
                 status_data = await algorithm_client.get_optimization_status(str(task_id))
                 

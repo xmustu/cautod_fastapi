@@ -153,3 +153,16 @@ class SSEImageChunk(BaseModel):
     imageUrl: str
     fileName: str
     altText: Optional[str] = None
+
+class TaskCancelResponse(BaseModel):
+    """任务终止响应模型"""
+    task_id: int
+    status: str
+    message: str
+    cancelled_at: datetime
+
+
+class TaskCancelRequest(BaseModel):
+    """任务终止请求模型（P0 标准化）"""
+    reason: Literal["user_action", "new_task", "page_leave", "timeout", "admin"] = "user_action"
+    mode: Literal["graceful", "force"] = "graceful"

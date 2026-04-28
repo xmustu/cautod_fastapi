@@ -132,3 +132,10 @@ db.sqlite3-wal
 # Node modules
 node_modules/
 package-lock.json
+
+
+shared/
+shared\
+
+.env.dev
+.env.prod

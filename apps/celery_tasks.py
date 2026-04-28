@@ -115,16 +115,32 @@ def celery_optimize_task(self, payload):
                 def __init__(self, user_id, username="worker"):
                     self.user_id = user_id
                     self.username = username
+            class DummyHTTPRequest:
+                async def is_disconnected(self):
+                    return False
 
             # 注意：optimize_stream_generator 的实现里使用了 save_or_update_message_in_redis 等 awaitable 函数。
             # 若这些函数依赖于 web app 的 aioredis，则可能需要更多适配；这里假设它们能在 worker 环境下工作或可忽略。
             dummy_request =DummyRequest(conversation_id, task_id, file_url, query)
             dummy_task = DummyTaskObj(task_id)
 
+            # 导入任务工具函数
+            from apps.task_utils import check_task_terminated
+            
             # 调用生成器
-            agen = optimize_stream_generator(dummy_request, DummyUser(user_id=user_id, username="worker"), r_async, query, dummy_task)  # User 类需能用这个方式构造，或替换为简单对象
+            agen = optimize_stream_generator(DummyHTTPRequest(), dummy_request, DummyUser(user_id=user_id, username="worker"), r_async, query, dummy_task)  # User 类需能用这个方式构造，或替换为简单对象
             # 如果 above 调用 需改成适合项目的 user 结构，请做对应适配。
             async for chunk in agen:
+                # 检查任务是否被终止
+                if await check_task_terminated(r_async, task_id):
+                    # 发布终止事件
+                    try:
+                        await r_async.publish(channel, json.dumps({"event": "cancelled", "task_id": task_id, "message": "任务已被用户终止"}))
+                        await r_async.set(progress_key, json.dumps({"status": "cancelled", "message": "任务已被用户终止"}))
+                    except Exception as e:
+                        print(f"发布终止事件失败: {e}")
+                    break
+                
                 # chunk 是字符串 SSE 格式片段，直接 publish
                 try:
                     # 保证 string

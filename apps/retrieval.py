@@ -1,5 +1,6 @@
 import asyncio
 import json 
+from starlette.requests import ClientDisconnect
 from database.models import Conversations
 from database.models import Tasks
 from apps.schemas import Message
@@ -18,6 +19,7 @@ from apps.schemas import (
 )
 
 async def retrieval_stream_generator(
+        http_request,
         request: TaskExecuteRequest,
         current_user: User,
         redis_client,
@@ -64,7 +66,29 @@ async def retrieval_stream_generator(
             PartData(id=3, name="耐磨轴承", imageUrl="https://images.unsplash.com/photo-1506794778202-b6f7a14994d6?q=80&w=2592&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D", fileName="bearing_wear_resistant.iges")
         ]
 
+        # 导入任务工具函数
+        from apps.task_utils import check_task_terminated, cancel_task_execution
+        
         for part_data in mock_parts:
+            if await http_request.is_disconnected():
+                await cancel_task_execution(task, redis_client, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
+                return
+            # 检查任务是否被终止
+            if await check_task_terminated(redis_client, request.task_id):
+                assistant_message.content += "\n\n**任务已被用户终止**"
+                assistant_message.status = "cancelled"
+                assistant_message.timestamp = datetime.now()
+                await save_or_update_message_in_redis(
+                    user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                )
+                # 更新任务状态
+                task.status = "cancelled"
+                await task.save()
+                # 发送终止事件
+                yield f'event: cancelled\ndata: {json.dumps({"task_id": str(request.task_id), "message": "任务已被用户终止"})}\n\n'
+                return
+            
             part_dict = part_data.model_dump()
             part_dict['type'] = 'part'  # 确保每个 part 对象都有 type 字段
             assistant_message.parts.append(part_dict)
@@ -94,6 +118,10 @@ async def retrieval_stream_generator(
         task.status = "done"
         await task.save()
 
+    except (asyncio.CancelledError, BrokenPipeError, ClientDisconnect):
+        from apps.task_utils import cancel_task_execution
+        await cancel_task_execution(task, redis_client, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
+        raise
     except Exception as e:
         task.status = "failed"
         await task.save()

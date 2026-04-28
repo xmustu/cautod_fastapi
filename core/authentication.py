@@ -10,7 +10,7 @@ from core.hashing import Hasher
 from pydantic import BaseModel
 from jwt.exceptions import InvalidTokenError
 from typing import Optional
-
+from apps.schemas.user import UserResponse as User
 from config import settings
 
 SECRET_KEY = settings.SECRET_KEY
@@ -83,6 +83,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     # 将 ORM 模型实例转换为 Pydantic 模型实例并返回
     return User(
         user_id=user_orm.user_id,
+        username=user_orm.username,  # ct:<--- 【补上这一行！】
         email=user_orm.email,
         created_at=user_orm.created_at,
         role=user_orm.role.value if hasattr(user_orm.role, 'value') else user_orm.role  # 添加角色字段

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from fastapi import APIRouter
 from fastapi import Header
+from starlette.requests import ClientDisconnect
 from pydantic import BaseModel
 from pydantic import Field
 from fastapi import Form
@@ -103,6 +104,7 @@ class OptimizationProgress(BaseModel):
 
 
 async def optimize_stream_generator(
+        http_request,
         request: TaskExecuteRequest,
         current_user: User,
         redis_client,
@@ -148,6 +150,11 @@ async def optimize_stream_generator(
         )
         sse_conv_info = f'event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n'
         yield sse_conv_info
+
+        if await http_request.is_disconnected():
+            from apps.task_utils import cancel_task_execution
+            await cancel_task_execution(task, redis_client, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
+            return
 
         # 3. 准备模型路径和优化结果记录
         model_path = rf"{request.file_url}" if request.file_url else r".\AutoFrame.SLDPRT"
@@ -256,6 +263,10 @@ async def optimize_stream_generator(
         task.status = "waiting_params"
         await task.save()
 
+    except (asyncio.CancelledError, BrokenPipeError, ClientDisconnect):
+        from apps.task_utils import cancel_task_execution
+        await cancel_task_execution(task, redis_client, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
+        raise
     except Exception as e:
         task.status = "failed"
         await task.save()

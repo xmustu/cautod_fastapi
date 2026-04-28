@@ -273,8 +273,29 @@ async def optimize_stream_generator(
                     )
                 )
 
+                # 导入任务工具函数
+                from apps.task_utils import check_task_terminated
+                
                 # 当 terminate_event 生效或任务结束后结束 SSE
                 while not task_terminate_event.is_set():
+                    # 检查 Redis 中的终止标志
+                    if await check_task_terminated(redis_client, request.task_id):
+                        task_terminate_event.set()
+                        # 发送终止消息
+                        assistant_message.content += "\n\n**任务已被用户终止**"
+                        assistant_message.status = "cancelled"
+                        assistant_message.timestamp = datetime.now()
+                        await save_or_update_message_in_redis(
+                            user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
+                            conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                        )
+                        # 更新任务状态
+                        task.status = "cancelled"
+                        await task.save()
+                        # 发送终止事件
+                        yield f'event: cancelled\ndata: {json.dumps({"task_id": str(request.task_id), "message": "任务已被用户终止"})}\n\n'
+                        break
+                    
                     chunk = await queue.get()
                     if chunk:
                         yield chunk

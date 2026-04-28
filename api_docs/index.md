@@ -38,6 +38,13 @@
   - 文档文件：`tasks.md`
   - 完整示例 URL：`/api/tasks/list`、`/api/tasks/execute`
 
+- 管理员模块 ⭐ 新增
+  - 路由前缀：`/api/admin`
+  - 简介：系统统计概览（包含 CPU、内存、GPU 监控）、用户管理（CRUD）、任务管理、系统配置等管理员功能。
+  - 文档文件：`admin.md`
+  - 完整示例 URL：`/api/admin/stats/overview`、`/api/admin/users`、`/api/admin/tasks`
+  - 权限要求：所有接口都需要管理员角色
+
 - 功能/文件与会话管理模块
   - 路由前缀：`/api`
   - 简介：文件上传/下载、获取模型文件、会话获取/删除、任务状态查询等。

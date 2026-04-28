@@ -26,9 +26,9 @@ class UserRegisterRequest(BaseModel):
     )
     password: str = Field(
         ..., 
-        min_length=6, 
+        min_length=8, 
         max_length=128,
-        description="密码,6-128个字符"
+        description="密码,8-128个字符,需要达到中等强度以上"
     )
     
     @field_validator('username')
@@ -62,40 +62,23 @@ class UserRegisterRequest(BaseModel):
     @field_validator('password')
     @classmethod
     def validate_password(cls, v: str) -> str:
-        """验证密码强度"""
-        # 检查长度
-        if len(v) < 6:
-            raise ValueError('密码至少需要6个字符')
-        if len(v) > 128:
-            raise ValueError('密码不能超过128个字符')
+        """验证密码强度（不硬性要求字符类型，基于强度评分）"""
+        from core.password_validator import PasswordValidator, PasswordStrength
         
-        # # 检查是否包含大写字母
-        # if not re.search(r'[A-Z]', v):
-        #     raise ValueError('密码必须包含至少一个大写字母')
+        # 使用密码验证器进行强度验证（不硬性要求字符类型）
+        is_valid, errors, strength = PasswordValidator.validate_password_strength(
+            password=v,
+            min_length=8,  # 最小长度8位
+            min_strength=PasswordStrength.MEDIUM,  # 最低要求中等强度
+            max_length=128,
+            check_common_passwords=True,  # 检查常见弱密码
+            check_sequential=True,  # 检查连续字符
+            check_repeat=True  # 检查重复字符
+        )
         
-        # # 检查是否包含小写字母
-        # if not re.search(r'[a-z]', v):
-        #     raise ValueError('密码必须包含至少一个小写字母')
-        
-        # # 检查是否包含数字
-        # if not re.search(r'\d', v):
-        #     raise ValueError('密码必须包含至少一个数字')
-        
-        # # 检查是否包含特殊字符
-        # if not re.search(r'[!@#$%^&*()_+\-=\[\]{};:\'",.<>?/\\|`~]', v):
-        #     raise ValueError('密码必须包含至少一个特殊字符 (!@#$%^&*等)')
-        
-        # # 检查常见弱密码
-        # common_passwords = [
-        #     'password', 'Password123!', '12345678', 'qwerty', 'abc123',
-        #     'password1', 'Password1!', '123456789', 'Aa123456!', 'Admin123!'
-        # ]
-        # if v in common_passwords:
-        #     raise ValueError('密码过于简单,请使用更复杂的密码')
-        
-        # # 检查是否包含连续字符(如123, abc)
-        # if re.search(r'(012|123|234|345|456|567|678|789|abc|bcd|cde)', v.lower()):
-        #     raise ValueError('密码不应包含连续的字符序列')
+        if not is_valid:
+            # 返回第一个错误信息
+            raise ValueError(errors[0] if errors else '密码不符合安全要求')
         
         return v
 
@@ -123,7 +106,35 @@ class UserRoleUpdateRequest(BaseModel):
 # 修改密码请求模型
 class PasswordChangeRequest(BaseModel):
     old_password: str
-    new_password: str
+    new_password: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="新密码,8-128个字符,需要达到中等强度以上"
+    )
+    
+    @field_validator('new_password')
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        """验证新密码强度（与注册密码要求一致，不硬性要求字符类型）"""
+        from core.password_validator import PasswordValidator, PasswordStrength
+        
+        # 使用密码验证器进行强度验证（不硬性要求字符类型）
+        is_valid, errors, strength = PasswordValidator.validate_password_strength(
+            password=v,
+            min_length=8,
+            min_strength=PasswordStrength.MEDIUM,  # 最低要求中等强度
+            max_length=128,
+            check_common_passwords=True,
+            check_sequential=True,
+            check_repeat=True
+        )
+        
+        if not is_valid:
+            # 返回第一个错误信息
+            raise ValueError(errors[0] if errors else '密码不符合安全要求')
+        
+        return v
 
 # 删除指定用户请求模型（仅管理员可用）
 class UserDeleteRequest(BaseModel):
@@ -193,10 +204,24 @@ class PasswordResetWithCodeRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, value: str) -> str:
-        if len(value) < 6:
-            raise ValueError("密码至少需要6个字符")
-        if len(value) > 128:
-            raise ValueError("密码不能超过128个字符")
+        """验证新密码强度（与注册密码要求一致，不硬性要求字符类型）"""
+        from core.password_validator import PasswordValidator, PasswordStrength
+        
+        # 使用密码验证器进行强度验证（不硬性要求字符类型）
+        is_valid, errors, strength = PasswordValidator.validate_password_strength(
+            password=value,
+            min_length=8,
+            min_strength=PasswordStrength.MEDIUM,  # 最低要求中等强度
+            max_length=128,
+            check_common_passwords=True,
+            check_sequential=True,
+            check_repeat=True
+        )
+        
+        if not is_valid:
+            # 返回第一个错误信息
+            raise ValueError(errors[0] if errors else '密码不符合安全要求')
+        
         return value
 
 class AuthConfig(BaseModel):

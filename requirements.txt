@@ -27,4 +27,9 @@ celery
 flower
 pytest
 emails  # 邮件发送库
-pytest-asyncio 
+pytest-asyncio
+psutil  # 系统资源监控库（CPU、内存）
+pynvml  # NVIDIA GPU 监控库（可选，仅在需要 GPU 监控时使用）
+mss  # 跨平台屏幕截图库（推荐，用于远程控制功能）
+Pillow  # 图像处理库（用于截图和图像处理）
+pyautogui  # 自动化库（用于鼠标键盘控制和截图） 

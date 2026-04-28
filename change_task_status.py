@@ -1,5 +1,5 @@
 from tortoise import run_async
-from database.models import Tasks   # 替换成你的模型路径
+from database.models import Tasks, Users  # 替换成你的模型路径
 from tortoise import Tortoise
 from database.settings import TORTOISE_ORM_MYSQL,TORTOISE_ORM_SQLITE  # 或 TORTOISE_ORM_MYSQL，根据你的配置
 from config import settings
@@ -15,6 +15,13 @@ async def mark_all_done():
         status__in=["pending", "running","queued"]
     ).update(status="done")
     print(f"已更新 {rows} 条任务状态为 done")
+
+    tasks = await Tasks.all()
+    print(tasks)
+
+    users = await Users.all()
+    for user in users:
+        print(user.username, user.email, user.role)
 
 if __name__ == "__main__":
     run_async(mark_all_done())

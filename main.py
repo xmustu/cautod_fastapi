@@ -25,6 +25,8 @@ from core.middleware import (
     FullRequestLoggerMiddleware,
     RateLimitMiddleware,
 )
+from core.security_headers import SecurityHeadersMiddleware
+from core.csrf_protection import CSRFProtectionMiddleware
 
 from database.settings import TORTOISE_ORM_SQLITE, TORTOISE_ORM_MYSQL
 from database.sql import register_sql
@@ -231,36 +233,85 @@ app.mount(settings.STATIC_URL, StaticFiles(directory=settings.STATIC_DIR), name=
 
 # CORS 中间件配置
 origins = [
-    "http://localhost:5174",  # 允许 Vite 开发服务器的源
+    # localhost (HTTP)
+    "http://localhost",
+    "http://localhost:80",
+    "http://localhost:443",
+    # localhost (HTTPS)
+    "https://localhost",
+    "https://localhost:443",
+    "https://localhost:80",
+    # 127.0.0.1 (HTTP)
+    "http://127.0.0.1",
+    "http://127.0.0.1:80",
+    "http://127.0.0.1:443",
+    # 127.0.0.1 (HTTPS)
+    "https://127.0.0.1",
+    "https://127.0.0.1:443",
+    "https://127.0.0.1:80",
+    # host.docker.internal (用于 Docker 容器访问宿主机)
+    "http://host.docker.internal",
+    "http://host.docker.internal:80",
+    "http://host.docker.internal:443",
+    "https://host.docker.internal",
+    "https://host.docker.internal:443",
+    "https://host.docker.internal:80",
+    # 常见的开发端口 (localhost)
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://localhost:8000",
+    "http://localhost:81",
+    # 常见的开发端口 (127.0.0.1)
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
-    "http://localhost:5173",  # 允许 Vite 开发服务器的源
-    "http://127.0.0.1:5173", # 有时浏览器会使用 127.0.0.1
-    "http://localhost:5172",  # 允许 Vite 开发服务器的源
-    "http://127.0.0.1:5172",
-    "http://localhost:5171",  # 允许 Vite 开发服务器的源
-    "http://127.0.0.1:5171",
-    "http://localhost/",
-    # 在生产环境中，应替换为你的前端域名
-    "http://frontend",
-
-    # 添加 Dify 相关的来源
-    "http://docker-web-1",        # Dify 前端容器
-    "http://docker-api-1",        # Dify API 容器
-    "http://docker-nginx-1",      # Dify nginx 容器（如果通过 nginx 转发）
-    "http://docker-web-1:3000",   # 若 Dify 前端有端口，需包含端口
-    "http://docker-api-1:5001"    # 若 Dify API 有端口，需包含端口
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
+    "http://127.0.0.1:8082",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:81",
+    # 常见的开发端口 (host.docker.internal)
+    "http://host.docker.internal:3000",
+    "http://host.docker.internal:5173",
+    "http://host.docker.internal:5174",
+    "http://host.docker.internal:8080",
+    "http://host.docker.internal:8081",
+    "http://host.docker.internal:8000",
+    "http://host.docker.internal:81",
 ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],#allow_origins=origins,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# 添加 CSRF 防护中间件（在 CORS 之后，验证请求来源）
+# 注意：由于使用 JWT Token 认证，主要依赖 Origin/Referer 验证
+app.add_middleware(
+    CSRFProtectionMiddleware,
+    allowed_origins=set(origins),  # 使用 CORS 允许的来源列表
+    verify_origin=True,
+    verify_referer=True,
+    allow_same_origin=True
+)
+
 # 添加速率限制中间件（在 CORS 之后注册，这样速率限制会在请求处理前先检查）
 # 中间件会在运行时从 app.state.redis 获取连接
 app.add_middleware(RateLimitMiddleware)
+
+# 添加安全响应头中间件（最后注册，确保所有响应都包含安全头）
+# enable_hsts: 仅在 HTTPS 环境启用（生产环境设置为 True）
+# app.add_middleware(
+#     SecurityHeadersMiddleware,
+#     enable_hsts=False,  # 开发环境设为 False，生产环境 HTTPS 时设为 True
+#     csp_policy=None  # 使用默认 CSP 策略，可根据需要自定义
+# )
 
 # count_time_middleware(app)  # 计时中间件
 
@@ -297,4 +348,4 @@ with open('./uvicorn_config.json', 'r', encoding='utf-8') as f:
 
 celery = create_celery()
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="127.0.0.1", port=8081,  log_level="debug",reload=False, reload_excludes=exclude_patterns, workers=1)
+    uvicorn.run("main:app", host="127.0.0.1", port=8082,  log_level="debug",reload=False, reload_excludes=exclude_patterns, workers=1)
