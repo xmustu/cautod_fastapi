@@ -127,7 +127,8 @@ async def lifespan(app: FastAPI):
     #关闭日志服务
 
     #关闭数据库连接
-    await app.state.redis.aclose()  # 关闭 Redis 连接
+    if app.state.redis:
+        await app.state.redis.aclose()  # 关闭 Redis 连接
     #退出第三方服务
     #print("stdout: ", mcp_process.stdout)
     #print("stderr: ", mcp_process.stderr)
@@ -293,13 +294,13 @@ app.add_middleware(
 
 # 添加 CSRF 防护中间件（在 CORS 之后，验证请求来源）
 # 注意：由于使用 JWT Token 认证，主要依赖 Origin/Referer 验证
-app.add_middleware(
-    CSRFProtectionMiddleware,
-    allowed_origins=set(origins),  # 使用 CORS 允许的来源列表
-    verify_origin=True,
-    verify_referer=True,
-    allow_same_origin=True
-)
+# app.add_middleware(
+#     CSRFProtectionMiddleware,
+#     allowed_origins=set(origins),  # 使用 CORS 允许的来源列表
+#     verify_origin=True,
+#     verify_referer=True,
+#     allow_same_origin=True
+# )
 
 # 添加速率限制中间件（在 CORS 之后注册，这样速率限制会在请求处理前先检查）
 # 中间件会在运行时从 app.state.redis 获取连接

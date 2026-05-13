@@ -222,7 +222,44 @@ async def download_file(
   
         # 构建目标目录路径：上一级目录/files/会话ID
         task_dir = base_dir / str(request.conversation_id) / str(request.task_id)
-        file = task_dir / request.file_name
+
+        # 关键：前端可能把 agent 返回的“路径字符串”原样带回来（甚至是绝对 Windows 路径）
+        # 为了安全与可映射性：始终只允许在 task_dir 下取文件。
+        raw_name = str(request.file_name or "")
+        normalized = raw_name.replace("\\", "/").strip()
+
+        # 去掉形如 "C:/..." 的驱动器前缀
+        if len(normalized) >= 3 and normalized[1] == ":":
+            normalized = normalized[2:].lstrip("/")
+
+        # 如果字符串里包含 "/{conversation_id}/{task_id}/" 则截取其后部分作为相对路径
+        marker = f"/{request.conversation_id}/{request.task_id}/"
+        lower_normalized = normalized.lower()
+        lower_marker = marker.lower()
+        idx = lower_normalized.find(lower_marker)
+        if idx != -1:
+            rel = normalized[idx + len(marker):]
+        else:
+            # 否则退化为“仅文件名”，仍然保证落在 task_dir 下
+            rel = os.path.basename(normalized)
+
+        rel = rel.replace("\\", "/").strip().lstrip("/")
+        if not rel:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"文件未找到：{request.file_name}",
+            )
+
+        rel_parts = [p for p in rel.split("/") if p not in ("", ".")]
+        # 禁止路径穿越
+        if any(p == ".." for p in rel_parts) or any(":" in p for p in rel_parts):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="非法文件路径请求。",
+            )
+
+        safe_rel = Path(*rel_parts)
+        file = task_dir / safe_rel
         # 💥 最小修复点：增加文件存在性检查 💥
         if not file.is_file():
             print(f"File not found at expected path: {file}")
@@ -238,7 +275,7 @@ async def download_file(
         print()
         return FileResponse(
             path=file,
-            filename=request.file_name,
+            filename=file.name,
             media_type=media_type
         )
     except HTTPException as e:

@@ -82,6 +82,13 @@ class Settings(BaseSettings):
     # Dify Chat Embedding Configuration
     DIFY_CHAT_TOKEN: str
     DIFY_CHAT_BASE_URL: str
+    GEOMETRY_PROVIDER_DEFAULT: str = "agent"
+    AGENT_SERVICE_BASE_URL: str = "http://127.0.0.1:8500"
+    AGENT_SERVICE_CHAT_PATH: str = "/api/chat-sse"
+    AGENT_SERVICE_RECOMMEND_PATH: str = "/api/optimize/recommend-algorithms"
+    AGENT_SERVICE_TIMEOUT: float = 60.0
+    AGENT_SERVICE_RETRY: int = 1
+    AGENT_FALLBACK_TO_DIFY: bool = True
     
     # 系统配置默认值（用于初始化数据库配置）
     SYSTEM_MAX_TASKS_PER_USER: int = 100

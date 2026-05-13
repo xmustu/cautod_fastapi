@@ -19,6 +19,7 @@ from core.authentication import User
 from core.system_config import check_conversation_limit, check_maintenance_mode
 from database.models import Tasks
 from apps.routes.chat import save_or_update_message_in_redis
+from apps.streaming_redis import aclose_streaming_redis, create_streaming_redis
 from database.models import Tasks, Conversations, GeometryResults
 
 
@@ -72,6 +73,9 @@ async def geometry_stream_generator(
         combinde_query,
         task: Tasks
 ):
+    # 流式响应内勿直接使用 lifespan 里的 app.state.redis，避免跨事件循环 Future 错误
+    stream_redis = create_streaming_redis()
+    _ = redis_client  # 保留参数以兼容调用方；实际使用 stream_redis
     # 初始化一个内存中的助手消息对象
     assistant_message = Message(
         role="assistant",
@@ -85,7 +89,7 @@ async def geometry_stream_generator(
         # 1. 立即保存初始的 "in_progress" 消息
         await save_or_update_message_in_redis(
             user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-            conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+            conversation_id=request.conversation_id, message=assistant_message, redis_client=stream_redis
         )
         # 2. 发送会话和任务信息
         conversation_info_data = SSEConversationInfo(conversation_id=request.conversation_id, task_id=str(request.task_id))
@@ -135,17 +139,17 @@ async def geometry_stream_generator(
         
         async for chunk in client.chat_stream(dify_request):
             if await http_request.is_disconnected():
-                await cancel_task_execution(task, redis_client, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
+                await cancel_task_execution(task, stream_redis, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
                 break
             # 检查任务是否被终止
-            if await check_task_terminated(redis_client, request.task_id):
+            if await check_task_terminated(stream_redis, request.task_id):
                 # 发送终止消息
                 assistant_message.content += "\n\n**任务已被用户终止**"
                 assistant_message.status = "cancelled"
                 assistant_message.timestamp = datetime.now()
                 await save_or_update_message_in_redis(
                     user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                    conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                    conversation_id=request.conversation_id, message=assistant_message, redis_client=stream_redis
                 )
                 # 更新任务状态
                 task.status = "cancelled"
@@ -166,7 +170,7 @@ async def geometry_stream_generator(
             yield sse_chunk
             await save_or_update_message_in_redis(
                 user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                conversation_id=request.conversation_id, message=assistant_message, redis_client=stream_redis
             )
 
             #await asyncio.sleep(0.05)
@@ -200,7 +204,7 @@ async def geometry_stream_generator(
 
         #         await save_or_update_message_in_redis(
         #             user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-        #             conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+        #             conversation_id=request.conversation_id, message=assistant_message, redis_client=stream_redis
         #         )
 
         #         await asyncio.sleep(0.1)
@@ -239,7 +243,7 @@ async def geometry_stream_generator(
 
             await save_or_update_message_in_redis(
                 user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-                conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+                conversation_id=request.conversation_id, message=assistant_message, redis_client=stream_redis
             )
 
             await asyncio.sleep(0.1)
@@ -285,7 +289,7 @@ async def geometry_stream_generator(
         assistant_message.timestamp = datetime.now()
         await save_or_update_message_in_redis(
             user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-            conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+            conversation_id=request.conversation_id, message=assistant_message, redis_client=stream_redis
         )
 
         # 7. 数据库操作，保存任务状态，建模结果
@@ -312,7 +316,7 @@ async def geometry_stream_generator(
         # await geometry_result.save()
     except (asyncio.CancelledError, BrokenPipeError, ClientDisconnect):
         from apps.task_utils import cancel_task_execution
-        await cancel_task_execution(task, redis_client, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
+        await cancel_task_execution(task, stream_redis, reason="page_leave", mode="graceful", actor_user_id=current_user.user_id)
         raise
     except Exception as e:
         # 任务失败，更新状态
@@ -327,13 +331,15 @@ async def geometry_stream_generator(
         assistant_message.timestamp = datetime.now()
         await save_or_update_message_in_redis(
             user_id=current_user.user_id, task_id=request.task_id, task_type=request.task_type,
-            conversation_id=request.conversation_id, message=assistant_message, redis_client=redis_client
+            conversation_id=request.conversation_id, message=assistant_message, redis_client=stream_redis
         )
 
         # 向客户端发送错误事件
         error_data = json.dumps({"error": "An error occurred during task execution."})
         yield f'event: error\ndata: {error_data}\n\n'
-    
+    finally:
+        await aclose_streaming_redis(stream_redis)
+
 
 # 依赖项：获取Dify API客户端
 async def get_dify_client():

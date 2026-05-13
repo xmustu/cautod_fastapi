@@ -50,6 +50,10 @@ async def save_or_update_message_in_redis(
     - 如果是助手消息，则更新最新的助手消息快照。
     """
     try:
+        if not redis_client:
+            # Redis 不可用时降级为 no-op，避免主流程被缓存写入失败中断。
+            print(f"Redis client unavailable, skip message cache write - user: {user_id}, task: {task_id}")
+            return
 
         message_data = message.model_dump(mode="json")
         message_data["timestamp"] = message.timestamp.timestamp() # 转换为时间戳
@@ -90,7 +94,8 @@ async def save_or_update_message_in_redis(
 
     except Exception as e:
         print(f"保存消息失败 - 用户: {user_id}, 任务: {task_id}..., 错误: {e}")
-        raise
+        # 历史消息写入失败不应影响主业务流程
+        return
 
 # 保存对话消息 (保留旧函数以兼容，或标记为废弃)
 async def save_message_to_redis(user_id: str, task_id: str, task_type: str, conversation_id: str, message:Message, redis_client:aioredis.Redis):
