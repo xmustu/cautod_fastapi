@@ -10,6 +10,7 @@ from config import settings
 AgentVersion = Literal["v1", "v2", "v3"]
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_FASTAPI_ROOT = Path(__file__).resolve().parents[2]
 _AGENT_SRC_BY_VERSION: dict[AgentVersion, Path] = {
     "v1": _REPO_ROOT / "algorithm" / "solidworks_agent" / "multi_agent_src_v1",
     "v2": _REPO_ROOT / "algorithm" / "solidworks_agent" / "multi_agent_src_v2",
@@ -95,7 +96,7 @@ def get_solidworks_agent_binding(version: AgentVersion) -> dict[str, Any]:
         "service_base_url": resolve_agent_service_base_url(version),
         "chat_path": settings.AGENT_SERVICE_CHAT_PATH,
         "gateway_hint": (
-            "python -m cautod_solidworks_agent_gateway "
+            f'cd "{_FASTAPI_ROOT}" && python -m cautod_solidworks_agent_gateway '
             f'--upstream "{_REPO_ROOT / "algorithm" / "solidworks_agent"}" '
             f"--version {version} --host 127.0.0.1 --port {port_hint}"
         ),
