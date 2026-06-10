@@ -86,72 +86,205 @@ def celery_optimize_task(self, payload):
                 print("Warning: publish started failed:", e)
             # 由于 optimize_stream_generator 是 async generator，使用 asyncio.run 在 worker 中执行
             
-                # 创建一个 simple redis publisher 客户端用于传递到 async generator（如果需要）
-                # 注意：原 generator 接受 redis_client (async?)。我们这里不传入 web app 的 redis，
-                # 仅直接遍历 generator 并 publish 每个 chunk 到 redis channel。
-                # 创建临时的 asyncio redis/publisher 若需要可以替换为 aioredis。
-                
-                    # 调用原有 async generator
-                    # 需要构造一些 minimal 参数：TaskExecuteRequest-like object 与 Task-like object
-            class DummyRequest:
-                def __init__(self, conversation_id, task_id, file_url, query):
-                    self.conversation_id = conversation_id
-                    self.task_id = task_id
-                    self.file_url = file_url
-                    self.query = query
-                    self.task_type = "optimize"
-
-            # 构造 minimal Task 对象兼容 optimize_stream_generator signature
-            # 此处只需提供 task_id 和 file_name 等属性被使用到的部分
-            class DummyTaskObj:
-                def __init__(self, tid):
-                    self.task_id = tid
-                    self.file_name = ""
-                    self.status = "running"
-                async def save(self): 
-                    return
-            # 简单的 user 对象，避免依赖 core.authentication.User 导入
-            class DummyUser:
-                def __init__(self, user_id, username="worker"):
-                    self.user_id = user_id
-                    self.username = username
-            class DummyHTTPRequest:
-                async def is_disconnected(self):
-                    return False
-
-            # 注意：optimize_stream_generator 的实现里使用了 save_or_update_message_in_redis 等 awaitable 函数。
-            # 若这些函数依赖于 web app 的 aioredis，则可能需要更多适配；这里假设它们能在 worker 环境下工作或可忽略。
-            dummy_request =DummyRequest(conversation_id, task_id, file_url, query)
-            dummy_task = DummyTaskObj(task_id)
-
-            # 导入任务工具函数
+            # TODO: 这里替换为本地 EXE 调用逻辑
+            # 从 payload 获取所需参数
+            file_url = payload.get("file_url", "")
+            exe_path = os.getenv("OPTIMIZE_EXE_PATH", r"D:\CAutoD\algorithm\optimize\net8.0\sldxunhuan.exe") # 使用默认的exe路径
+            exe_exists = os.path.exists(exe_path)
+            file_exists = os.path.exists(file_url) if file_url else False
+            exe_dir = os.path.dirname(exe_path) if exe_path else ""
+            work_dir = os.path.dirname(file_url) if file_url else exe_dir
+            print(
+                "[optimize] payload: "
+                f"task_id={task_id} file_url={file_url} file_exists={file_exists} "
+                f"exe_path={exe_path} exe_exists={exe_exists} work_dir={work_dir}"
+            )
+            if not exe_exists:
+                await r_async.set(
+                    progress_key,
+                    json.dumps({"status": "failed", "error": f"exe not found: {exe_path}"}),
+                )
+                await r_async.publish(
+                    channel,
+                    json.dumps(
+                        {
+                            "event": "failed",
+                            "task_id": task_id,
+                            "error": f"exe not found: {exe_path}",
+                        }
+                    ),
+                )
+                return
+            if not file_exists:
+                await r_async.set(
+                    progress_key,
+                    json.dumps({"status": "failed", "error": f"model file not found: {file_url}"}),
+                )
+                await r_async.publish(
+                    channel,
+                    json.dumps(
+                        {
+                            "event": "failed",
+                            "task_id": task_id,
+                            "error": f"model file not found: {file_url}",
+                        }
+                    ),
+                )
+                return
+            
+            # 使用 asyncio.create_subprocess_exec 异步执行，可以边读边推
+            # 注意这里是直接执行 .exe 文件，所以不需要前置 "python" 命令
+            cmd = [exe_path, file_url]
+            print(f"Executing local optimization cmd: {cmd}")
+            
+            # 导入包和工具函数
+            import asyncio
             from apps.task_utils import check_task_terminated
             
-            # 调用生成器
-            agen = optimize_stream_generator(DummyHTTPRequest(), dummy_request, DummyUser(user_id=user_id, username="worker"), r_async, query, dummy_task)  # User 类需能用这个方式构造，或替换为简单对象
-            # 如果 above 调用 需改成适合项目的 user 结构，请做对应适配。
-            async for chunk in agen:
-                # 检查任务是否被终止
-                if await check_task_terminated(r_async, task_id):
-                    # 发布终止事件
-                    try:
-                        await r_async.publish(channel, json.dumps({"event": "cancelled", "task_id": task_id, "message": "任务已被用户终止"}))
-                        await r_async.set(progress_key, json.dumps({"status": "cancelled", "message": "任务已被用户终止"}))
-                    except Exception as e:
-                        print(f"发布终止事件失败: {e}")
-                    break
+            model_save_path = None
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    cwd=work_dir or None,
+                )
                 
-                # chunk 是字符串 SSE 格式片段，直接 publish
+                async def read_stream(stream):
+                    while True:
+                        line = await stream.readline()
+                        if not line:
+                            break
+                        try:
+                            line_str = line.decode("utf-8").strip()
+                        except UnicodeDecodeError:
+                            line_str = line.decode("gbk", errors="replace").strip()
+                        if line_str:
+                            if line_str.lower().startswith("model save path:"):
+                                model_save_path = line_str.split(":", 1)[-1].strip()
+                            # 包装成SSE格式
+                            chunk = f'event: update\ndata: {{"message": "{line_str}"}}\n\n'
+                            try:
+                                await r_async.publish(channel, chunk)
+                            except Exception as e:
+                                print("publish chunk error:", e)
+
+                # 启动控制台输出读取任务
+                read_task = asyncio.create_task(read_stream(process.stdout))
+                
+                while True:
+                    # 检查任务是否被终止
+                    if await check_task_terminated(r_async, task_id):
+                        # 发布终止事件
+                        process.kill()
+                        try:
+                            await r_async.publish(channel, json.dumps({"event": "cancelled", "task_id": task_id, "message": "任务已被用户终止"}))
+                            await r_async.set(progress_key, json.dumps({"status": "cancelled", "message": "任务已被用户终止"}))
+                        except Exception as e:
+                            print(f"发布终止事件失败: {e}")
+                        break
+                    
+                    # 检查进程是否已结束
+                    if process.returncode is not None:
+                        break
+                        
+                    await asyncio.sleep(1)
+                    
+                await read_task
+                await process.wait()
+            except NotImplementedError:
+                print("[optimize] asyncio subprocess not supported, falling back to blocking subprocess")
+                import subprocess
+                import locale
+
+                def _run_blocking():
+                    encoding = locale.getpreferredencoding(False) or "gbk"
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        encoding=encoding,
+                        errors="replace",
+                        cwd=work_dir or None,
+                    )
+                    output_lines = []
+                    if proc.stdout:
+                        for line in proc.stdout:
+                            output_lines.append(line.rstrip("\n"))
+                    return proc.wait(), output_lines
+
+                return_code, output_lines = await asyncio.to_thread(_run_blocking)
+                for line_str in output_lines:
+                    if not line_str:
+                        continue
+                    if line_str.lower().startswith("model save path:"):
+                        model_save_path = line_str.split(":", 1)[-1].strip()
+                    chunk = f'event: update\ndata: {{"message": "{line_str}"}}\n\n'
+                    try:
+                        await r_async.publish(channel, chunk)
+                    except Exception as e:
+                        print("publish chunk error:", e)
+                process = None
+                class _DummyProc:
+                    returncode = return_code
+                process = _DummyProc()
+
+            print(f"[optimize] process exited: returncode={process.returncode}")
+            if process.returncode not in (0, None):
                 try:
-                    # 保证 string
-                    await r_async.publish(channel, chunk)
+                    await r_async.set(
+                        progress_key,
+                        json.dumps({"status": "failed", "error": f"exe exit code {process.returncode}"}),
+                    )
+                    await r_async.publish(
+                        channel,
+                        json.dumps(
+                            {
+                                "event": "failed",
+                                "task_id": task_id,
+                                "error": f"exe exit code {process.returncode}",
+                            }
+                        ),
+                    )
                 except Exception as e:
-                    print("publish chunk error:", e)
-                    # 仍继续
-                    continue
-            # 当 generator 结束，写入 finished
+                    print("Warning: publish exit code failed:", e)
+                return
+            
+            # 当执行结束，写入 finished
             try:
                 await r_async.set(progress_key, json.dumps({"status": "finished"}))
+                if model_save_path:
+                    await r_async.set(
+                        f"optimize_result_path:{task_id}",
+                        model_save_path,
+                    )
+                    try:
+                        await r_async.publish(
+                            channel,
+                            json.dumps(
+                                {
+                                    "event": "optimize_result",
+                                    "task_id": task_id,
+                                    "model_save_path": model_save_path,
+                                }
+                            ),
+                        )
+                    except Exception as e:
+                        print("[optimize] failed to publish optimize_result:", e)
+                    try:
+                        from database.models import OptimizationResults
+                        optimization_result = await OptimizationResults.get_or_none(task_id=task_id)
+                        if optimization_result:
+                            optimization_result.optimized_cad_file_path = model_save_path
+                            await optimization_result.save()
+                        else:
+                            await OptimizationResults.create(
+                                task_id=task_id,
+                                optimized_cad_file_path=model_save_path,
+                            )
+                    except Exception as e:
+                        print("[optimize] failed to persist model path:", e)
                 await r_async.publish(channel, json.dumps({"event": "message_end", "task_id": task_id}))
             except Exception as e:
                 print("Warning: publish finish failed:", e)
@@ -189,10 +322,18 @@ def celery_optimize_task(self, payload):
                 pass            
         # 在 celery worker（同步上下文）启动 asyncio 运行
     try:
-        asyncio.run(_run_and_publish())
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(_run_and_publish())
     except Exception as e:
         print("Celery optimize task error:", e)
         raise
+    finally:
+        try:
+            loop.close()
+        except Exception:
+            pass
+        asyncio.set_event_loop(None)
     # 在 celery worker（同步上下文）安全地运行异步函数
     # def _run_coroutine_sync(coro_factory):
     #     """

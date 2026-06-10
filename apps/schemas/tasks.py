@@ -46,6 +46,17 @@ class TaskExecuteRequest(BaseModel):
     query: Optional[str] = Field(None, description="用户的文本输入")
     file_url: Optional[str] = Field(None, description="上传文件的URL")
     files: Optional[List[FileItem]] = Field(None, description="文件列表")
+    provider: Optional[Literal["agent", "agent_v1", "agent_v2", "agent_v3", "dify"]] = Field(
+        None,
+        description=(
+            "几何任务执行提供方：agent/agent_v3→v3，agent_v1→v1，agent_v2→v2；"
+            "也可配合 version 字段指定 v1/v2/v3"
+        ),
+    )
+    version: Optional[Literal["v1", "v2", "v3"]] = Field(
+        None,
+        description="显式指定 agent 版本（优先级高于 provider 别名）；对应 gateway 端口 8501/8502/8503",
+    )
 
 class PendingTaskResponse(BaseModel):
     """待处理任务的响应体模型"""
@@ -101,7 +112,7 @@ class GenerationMetadata(BaseModel):
     @field_validator('cad_file')
     def validate_cad_file(cls, v):
         # 验证文件扩展名
-        if v and not v.lower().endswith('.step') and not v.lower().endswith('.sldprt'):
+        if v and not v.lower().endswith('.step') and not v.lower().endswith('.sldprt') and not v.lower().endswith('.sldasm'):
             raise ValueError('CAD文件必须是.step或者.sldprt格式')
         return v
 

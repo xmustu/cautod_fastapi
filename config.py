@@ -83,7 +83,14 @@ class Settings(BaseSettings):
     DIFY_CHAT_TOKEN: str
     DIFY_CHAT_BASE_URL: str
     GEOMETRY_PROVIDER_DEFAULT: str = "agent"
-    AGENT_SERVICE_BASE_URL: str = "http://127.0.0.1:8500"
+    # multi_agent_src_v3：源码目录（空则自动解析为仓库 algorithm/solidworks_agent/multi_agent_src_v3）
+    SOLIDWORKS_AGENT_VERSION: str = "v3"
+    SOLIDWORKS_AGENT_SRC: str = ""
+    # 方案 A：v1/v2/v3 各跑一个 gateway，FastAPI 按 provider/version 选 URL（无需重启 gateway 切换版本）
+    AGENT_SERVICE_BASE_URL: str = "http://127.0.0.1:8503"
+    AGENT_SERVICE_BASE_URL_V1: str = "http://127.0.0.1:8501"
+    AGENT_SERVICE_BASE_URL_V2: str = "http://127.0.0.1:8502"
+    AGENT_SERVICE_BASE_URL_V3: str = "http://127.0.0.1:8503"
     AGENT_SERVICE_CHAT_PATH: str = "/api/chat-sse"
     AGENT_SERVICE_RECOMMEND_PATH: str = "/api/optimize/recommend-algorithms"
     AGENT_SERVICE_TIMEOUT: float = 60.0

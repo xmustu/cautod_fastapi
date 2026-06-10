@@ -20,8 +20,7 @@ from core.system_config import check_task_limit, check_maintenance_mode
 from core.permissions import PermissionChecker
 from database.models import Tasks, Conversations, GeometryResults, OptimizationResults, UserRole
 from apps.routes.chat import save_message_to_redis, save_or_update_message_in_redis
-from apps.geometry import  DifyClient
-from apps.geometry import geometry_stream_generator
+from apps.providers.geometry_provider import geometry_stream_by_provider
 from apps.retrieval import retrieval_stream_generator
 from apps.optimize import optimize_stream_generator
 from apps.optimize import AlgorithmClient, write_key
@@ -44,7 +43,12 @@ from apps.schemas import (
 from apps.schemas import (
     AlgorithmRequest,
     OptimizationParamsRequest,
+    OptimizationInitialParamsRequest,
+    AlgorithmRecommendRequest,
+    AlgorithmRecommendResponse,
+    AlgorithmRecommendation,
 )
+from apps.providers.agent_client import AgentServiceClient
 from apps.schemas import (
     GenerationMetadata,
     SSEConversationInfo,
@@ -260,8 +264,8 @@ async def execute_task(
 
             # 更新任务状态为"处理中"
 
-                task.status = "queued"
-                #print("通过optimize验证了吗")
+                task.status = "pending"
+                print(f"[optimize] set task status pending: task_id={task.task_id}")
             else:
                 task.status = "running"
             await task.save()
@@ -304,7 +308,7 @@ async def execute_task(
         if request.task_type == "geometry":
             
             return StreamingResponse(
-                geometry_stream_generator(
+                geometry_stream_by_provider(
                     global_request,
                     request,
                     current_user,
@@ -361,12 +365,18 @@ async def execute_task(
             #     media_type="text/event-stream"
             # )
                     # 为 Celery 提交准备参数
+            print(
+                f"[optimize] execute request: task_id={request.task_id} file_url={request.file_url} user_id={current_user.user_id}"
+            )
+            selected_params = {}
+
             celery_payload = {
                 "task_id": str(request.task_id),
                 "conversation_id": str(request.conversation_id),
                 "user_id": str(current_user.user_id),
                 "file_url": request.file_url or "",
                 "query": request.query or "",
+                "selected_params": selected_params,
                 # 将 redis 连接信息序列化传递（不要传 redis 对象本身）
                 "redis_host": os.getenv("REDIS_HOST", settings.REDIS_HOST),
                 "redis_port": int(os.getenv("REDIS_PORT", settings.REDIS_PORT)),
@@ -382,6 +392,7 @@ async def execute_task(
                 print("Failed to push task to optimize_queue:", e, file=sys.stderr)
             try:
             # 提交 Celery 任务（异步）
+                print(f"[optimize] submit celery task payload keys: {list(celery_payload.keys())}")
                 celery_result = celery.send_task("optimize:celery_optimize_task", args=[celery_payload], kwargs={})
                 await register_celery_task_mapping(r_async, task.task_id, celery_result.id)
             except Exception as e:
@@ -438,9 +449,14 @@ async def execute_task(
                                 yield f"{data}\n\n"
                             # 如果 worker 发布结束信号，退出
                             try:
-                                payload = json.loads(data.replace("data: ", "") if data.startswith("data: ") else data)
-                                if payload.get("event") in ("finished", "failed", "message_end"):
-                                    break
+                                normalized = data.strip()
+                                # SSE update chunks (event: update\n...) 不是 JSON，跳过解析
+                                if normalized.startswith("event:"):
+                                    continue
+                                if normalized.startswith("{"):
+                                    payload = json.loads(normalized)
+                                    if payload.get("event") in ("finished", "failed", "message_end"):
+                                        break
                             except Exception as e:
                                 print("Failed to yield parse_pubsub_message error SSE:", e, file=sys.stderr)
                         # 小延迟避免忙循环
@@ -492,9 +508,16 @@ async def execute_task(
                 detail=f"Unknown task type: {request.task_type}"
             )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error in execute_task: {str(e)}")
         # 更新任务状态为 "failed"
-        task.status = "failed"
-        await task.save()
+        if 'task' in locals() and task:
+            try:
+                task.status = "failed"
+                await task.save()
+            except Exception as inner_e:
+                print(f"Failed to update task status: {inner_e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Task execution failed: {str(e)}"
@@ -610,6 +633,90 @@ async def cancel_task_legacy(
 ):
     return await _cancel_task_impl(request, task_id, body, current_user)
 
+
+def _normalize_recommendations(payload: Any) -> List[AlgorithmRecommendation]:
+    recommendations: List[AlgorithmRecommendation] = []
+
+    def _append(item: Any) -> None:
+        if isinstance(item, str):
+            recommendations.append(AlgorithmRecommendation(algorithm=item))
+            return
+        if isinstance(item, dict):
+            algorithm = item.get("algorithm") or item.get("name") or item.get("method")
+            if algorithm:
+                recommendations.append(
+                    AlgorithmRecommendation(
+                        algorithm=str(algorithm),
+                        reason=item.get("reason"),
+                        score=item.get("score"),
+                    )
+                )
+
+    if isinstance(payload, dict):
+        data = payload.get("data") if "data" in payload else payload
+        items = data.get("recommendations") if isinstance(data, dict) else None
+        if isinstance(items, list):
+            for item in items:
+                _append(item)
+    elif isinstance(payload, list):
+        for item in payload:
+            _append(item)
+
+    if not recommendations:
+        for fallback in ("GA", "PSO", "DE"):
+            recommendations.append(AlgorithmRecommendation(algorithm=fallback))
+
+    return recommendations
+
+
+@router.post("/optimize/recommend-algorithms", response_model=AlgorithmRecommendResponse, summary="推荐优化算法")
+async def  recommend_optimization_algorithms(
+    request_data: AlgorithmRecommendRequest,
+    current_user: User = Depends(check_maintenance_mode)
+):
+    """
+    在用户选择优化参数后，调用推荐 Agent 返回推荐算法列表。
+    不改变现有优化任务流，只提供额外推荐步骤供前端调用。
+    """
+    task = await Tasks.get_or_none(
+        task_id=request_data.task_id,
+        user_id=current_user.user_id,
+        conversation_id=request_data.conversation_id,
+    )
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found or does not belong to the current user/conversation.",
+        )
+
+    optimization_result = await OptimizationResults.filter(task_id=request_data.task_id).first()
+    model_path = optimization_result.optimized_cad_file_path if optimization_result else None
+
+    client = AgentServiceClient()
+    payload = {
+        "task_id": str(request_data.task_id),
+        "conversation_id": str(request_data.conversation_id),
+        "selected_params": request_data.selected_params,
+        "model_path": model_path,
+    }
+    try:
+        agent_payload = await client.recommend_algorithms(
+            payload,
+            session_id=getattr(task, "dify_conversation_id", None),
+        )
+        recommendations = _normalize_recommendations(agent_payload)
+        provider = "agent"
+    except Exception as exc:
+        print(f"Algorithm recommend agent failed: {exc}", file=sys.stderr)
+        recommendations = _normalize_recommendations({})
+        provider = "fallback"
+
+    return AlgorithmRecommendResponse(
+        task_id=request_data.task_id,
+        recommendations=recommendations,
+        provider=provider,
+    )
+
 @router.post("/optimize/submit-params", summary="提交优化参数")
 async def submit_optimization_params(
     request_data: OptimizationParamsRequest,
@@ -635,7 +742,9 @@ async def submit_optimization_params(
     
     # 查询指定task_id的优化结果
     optimization_result = await OptimizationResults.filter(task_id=request_data.task_id).first()
-    model_path = Path(os.path.dirname(optimization_result.optimized_cad_file_path))
+    model_path = None
+    if optimization_result and optimization_result.optimized_cad_file_path:
+        model_path = Path(os.path.dirname(optimization_result.optimized_cad_file_path))
     # algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
     # # 检查算法服务健康状态
     # health_status = await algorithm_client.check_health()
@@ -647,17 +756,80 @@ async def submit_optimization_params(
     try:
 
         #response = await algorithm_client.send_parameter(model_path, request_data.params)
-        params_file = model_path / "parameters.txt"
-        with open(params_file, "w", encoding="utf-8") as f:
-            json.dump(request_data.params, f)
-        control_file = model_path / "control.txt"
-        write_key(control_file, "command", "8")
-        print(f"Optimization parameters saved to {params_file} and control command set to 8 in {control_file}.")
+        # 保存到 Redis，供 execute 阶段读取并传递给本地 EXE
+        params_key = f"optimize_params:{request_data.task_id}"
+        r_async = redis_async.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.REDIS_DB,
+            decode_responses=True,
+        )
+        await r_async.set(params_key, json.dumps(request_data.params))
+        await r_async.close()
+
+        # 若存在老流程的模型目录则继续写文件（兼容）
+        if model_path:
+            params_file = model_path / "parameters.txt"
+            with open(params_file, "w", encoding="utf-8") as f:
+                json.dump(request_data.params, f)
+            control_file = model_path / "control.txt"
+            write_key(control_file, "command", "8")
+            print(f"Optimization parameters saved to {params_file} and control command set to 8 in {control_file}.")
         #await algorithm_client.close  ()  # 关闭客户端连接
         # 模拟成功响应
         return {"message": "Parameters received successfully and printed to console."}
     except Exception as e:
         print("Error sending parameters to algorithm service:", e, file=sys.stderr)
+
+
+@router.post("/optimize/initial-params", summary="获取优化初始参数")
+async def get_optimization_initial_params(
+    request_data: OptimizationInitialParamsRequest,
+    current_user: User = Depends(check_maintenance_mode),
+):
+    task = await Tasks.get_or_none(
+        task_id=request_data.task_id,
+        user_id=current_user.user_id,
+        conversation_id=request_data.conversation_id,
+    )
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found or does not belong to the current user/conversation.",
+        )
+
+    from apps.optimize import AlgorithmClient, GetInitialParametersRequest
+
+    algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
+    initial_request = GetInitialParametersRequest(
+        task_id=str(request_data.task_id),
+        model_path=request_data.file_url,
+        simulation_type=request_data.simulation_type or "StressSimulation",
+    )
+    try:
+        initial_params_result = await algorithm_client.get_initial_parameters(initial_request)
+        initial_parameters = initial_params_result.get("parameters")
+        if initial_parameters is None:
+            legacy_params = initial_params_result.get("initial_parameters", {})
+            if isinstance(legacy_params, dict):
+                initial_parameters = [
+                    {
+                        "name": name,
+                        "min": float(value),
+                        "max": float(value),
+                        "initial": float(value),
+                    }
+                    for name, value in legacy_params.items()
+                ]
+            else:
+                initial_parameters = []
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get initial parameters: {str(e)}",
+        )
+
+    return {"parameters": initial_parameters}
 
 
 @router.get("/optimize/progress/{task_id}")
@@ -747,29 +919,32 @@ async def optimize_progress_sse(task_id: str):
                 yield f'event: error\ndata: {json.dumps({"error": "Invalid parameters: missing bounds"})}\n\n'
                 return
             
-            # 创建算法客户端
-            algorithm_client = AlgorithmClient(base_url=settings.OPTIMIZE_API_URL)
+            # 创建算法客户端 (本地EXE形式将在这里使用不同的调用，但为了兼容仍保留客户端或使用 Celery 执行)
+            # 不过我们已经收到参数，可以正式开始优化流程了
             
-            # 构建优化配置
-            optimization_config = OptimizationConfig(
-                task_id=str(task_id),
-                model_path=model_path,
-                simulation_type=simulation_type,
-                population_size=10,  # 可以从参数中读取
-                num_generations=10,  # 可以从参数中读取
-                lower_bounds=lower_bounds,
-                upper_bounds=upper_bounds,
-                max_stress=max_stress if simulation_type == "StressSimulation" else None,
-                max_volume=max_volume if simulation_type == "FlowSimulation" else None
-            )
+            # 使用 Celery 异步任务启动本地优化执行代码
+            from apps.celery_tasks import celery_optimize_task
             
-            # 启动优化任务
-            task_status = await algorithm_client.start_optimization(optimization_config)
-            task.status = task_status.status
-            await task.save()
+            try:
+                # 调用 Celery，它内部通过 subprocess.run 执行本地 exe 逻辑
+                celery_optimize_task.delay({
+                    "task_id": str(task_id),
+                    "file_url": model_path,
+                    "conversation_id": str(task.conversation_id),
+                    "user_id": task.user_id,
+                    "query": "",  # 可以根据需要传递额外参数
+                    "selected_params": params_data,  # 新增：传递用户选择的优化参数
+                })
+            except Exception as e:
+                yield f'event: error\ndata: {json.dumps({"error": f"Failed to start celery task: {str(e)}"})}\n\n'
+                return
+            
             optimization_started = True
             
-            yield f'event: optimization_started\ndata: {json.dumps({"task_id": task_id, "status": task_status.status})}\n\n'
+            # 等待一小段时间让 celery 任务开始，然后进入轮询 redis 拿进度
+            await asyncio.sleep(1)
+            # 启动优化任务 (这里直接 yield started，然后进入 Redis 轮询)
+            yield f'event: optimization_started\ndata: {json.dumps({"task_id": task_id, "status": "running"})}\n\n'
             
             # 9. 轮询Redis获取仿真结果并推送
             last_generation = -1

@@ -107,6 +107,10 @@ from .optimize import (
     UnitInfo,
     OptimizeResult,
     OptimizationParamsRequest,
+    OptimizationInitialParamsRequest,
+    AlgorithmRecommendation,
+    AlgorithmRecommendRequest,
+    AlgorithmRecommendResponse,
     AlgorithmRequest,
     TaskStatus,
     HealthStatus
@@ -169,6 +173,10 @@ __all__ = [
     "UnitInfo",
     "OptimizeResult",
     "OptimizationParamsRequest",
+    "OptimizationInitialParamsRequest",
+    "AlgorithmRecommendation",
+    "AlgorithmRecommendRequest",
+    "AlgorithmRecommendResponse",
     "AlgorithmRequest",
     "TaskStatus",
     "HealthStatus"

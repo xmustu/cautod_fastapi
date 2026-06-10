@@ -148,6 +148,10 @@ def _export_slddoc_to_stl(sld_doc_path: str, stl_path: str) -> bool:
     return True
 
 from apps.providers.agent_client import AgentServiceClient
+from apps.providers.geometry_provider import (
+    resolve_agent_service_base_url,
+    resolve_agent_version,
+)
 from apps.routes.chat import save_or_update_message_in_redis
 from apps.streaming_redis import aclose_streaming_redis, create_streaming_redis
 from apps.schemas import (
@@ -200,7 +204,12 @@ async def geometry_agent_stream_generator(
         yield f"event: conversation_info\ndata: {conversation_info_data.model_dump_json()}\n\n"
 
         full_answer: list[str] = []
-        client = AgentServiceClient()
+        agent_version = resolve_agent_version(
+            getattr(request, "provider", None),
+            getattr(request, "version", None),
+        )
+        agent_base_url = resolve_agent_service_base_url(agent_version)
+        client = AgentServiceClient(base_url=agent_base_url)
         session_id = task.dify_conversation_id
 
         async for payload in client.chat_stream(message=combinde_query, session_id=session_id):

@@ -47,6 +47,35 @@ class OptimizationParamsRequest(BaseModel):
     params: Dict[str, Dict[str, Union[float, str]]] = Field(..., description="优化参数及其范围，例如 {'param1': {'min': 0.1, 'max': 1.0}}")
 
 
+class AlgorithmRecommendation(BaseModel):
+    """推荐算法项"""
+    algorithm: str = Field(..., description="推荐算法名称，如 GA/PSO/DE")
+    reason: Optional[str] = Field(None, description="推荐理由")
+    score: Optional[float] = Field(None, description="推荐评分/置信度")
+
+
+class AlgorithmRecommendRequest(BaseModel):
+    """算法推荐请求"""
+    conversation_id: str = Field(..., description="任务所属的对话ID")
+    task_id: int = Field(..., description="任务ID")
+    selected_params: Dict[str, Any] = Field(..., description="用户选择的优化参数")
+
+
+class AlgorithmRecommendResponse(BaseModel):
+    """算法推荐响应"""
+    task_id: int
+    recommendations: List[AlgorithmRecommendation]
+    provider: Optional[str] = Field(None, description="推荐来源")
+
+
+class OptimizationInitialParamsRequest(BaseModel):
+    """获取初始参数请求"""
+    conversation_id: str = Field(..., description="任务所属的对话ID")
+    task_id: int = Field(..., description="任务ID")
+    file_url: str = Field(..., description="上传的模型文件路径")
+    simulation_type: Optional[str] = Field(default="StressSimulation", description="仿真类型")
+
+
 
 # 数据模型（与算法侧对应）
 class AlgorithmRequest(BaseModel):

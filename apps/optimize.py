@@ -194,15 +194,33 @@ async def optimize_stream_generator(
         )
         
         initial_params_result = await algorithm_client.get_initial_parameters(initial_params_request)
-        initial_parameters = initial_params_result.get("initial_parameters", {})
-        
+        initial_parameters = initial_params_result.get("parameters")
+        if initial_parameters is None:
+            legacy_parameters = initial_params_result.get("initial_parameters", {})
+            if isinstance(legacy_parameters, dict):
+                initial_parameters = [
+                    {
+                        "name": name,
+                        "min": float(value),
+                        "max": float(value),
+                        "initial": float(value),
+                    }
+                    for name, value in legacy_parameters.items()
+                ]
+            else:
+                initial_parameters = []
+
         print(f"获取到初始参数: {len(initial_parameters)} 个")
         
         # 6. 返回参数给前端（通过SSE发送）
         # 将初始参数转换为适合前端的格式
         params_text = "获取到以下初始参数，请设置优化范围：\n\n"
-        for param_name, param_value in initial_parameters.items():
-            params_text += f"- {param_name}: {param_value:.8f}m\n"
+        for param in initial_parameters:
+            param_name = param.get("name")
+            if not param_name:
+                continue
+            param_value = param.get("initial", param.get("min", param.get("max", 0)))
+            params_text += f"- {param_name}: {float(param_value):.8f}m\n"
         
         assistant_message.content += params_text
         assistant_message.timestamp = datetime.now()
@@ -215,7 +233,7 @@ async def optimize_stream_generator(
         params_event_data = {
             "event": "initial_parameters",
             "task_id": task_id_str,
-            "parameters": initial_parameters
+            "parameters": initial_parameters,
         }
         yield f'event: initial_parameters\ndata: {json.dumps(params_event_data, ensure_ascii=False)}\n\n'
         
