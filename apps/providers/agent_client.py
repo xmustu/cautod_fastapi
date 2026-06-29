@@ -19,6 +19,12 @@ class AgentServiceClient:
         self.timeout = settings.AGENT_SERVICE_TIMEOUT
         self.retries = max(0, settings.AGENT_SERVICE_RETRY)
 
+    def _chat_stream_timeout(self) -> httpx.Timeout:
+        base = float(self.timeout)
+        # agent 首 token / 建模阶段可能长时间无输出，read 需单独放宽
+        read_timeout = max(base, 600.0)
+        return httpx.Timeout(connect=base, read=read_timeout, write=base, pool=base)
+
     async def chat_stream(
         self,
         message: str,
@@ -31,7 +37,7 @@ class AgentServiceClient:
         last_error: Exception | None = None
         for attempt in range(self.retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with httpx.AsyncClient(timeout=self._chat_stream_timeout()) as client:
                     async with client.stream(
                         "POST",
                         f"{self.base_url}{self.chat_path}",
